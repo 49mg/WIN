@@ -1,0 +1,29 @@
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# data (downloaded and generated)
+data/*
+!data/README.md
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+mlruns/
+mlartifacts/
+mlflow.db
+
+# node
+node_modules/
+.next/
+out/
+
+# editor / os
+.idea/
+.vscode/
+.DS_Store
