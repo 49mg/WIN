@@ -45,6 +45,15 @@ export function search(q: string, signal?: AbortSignal) {
   return call<Item[]>(`/search?q=${encodeURIComponent(q)}`, { signal });
 }
 
+export function recommendVibe(body: {
+  text: string;
+  disliked?: number[];
+  categories?: Category[];
+  k?: number;
+}) {
+  return call<Recommendation[]>("/recommend/vibe", { method: "POST", body: JSON.stringify(body) });
+}
+
 export function recommend(body: {
   liked: number[];
   disliked?: number[];

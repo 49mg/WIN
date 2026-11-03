@@ -7,12 +7,22 @@ import {
   availableCategories,
   CATEGORY_LABEL,
   recommend,
+  recommendVibe,
   type Category,
   type Recommendation,
 } from "@/lib/api";
 import { useFeedback, useLiked, useQueue } from "@/lib/store";
 
+type Mode = "titles" | "vibe";
+const VIBE_EXAMPLES = [
+  "cozy and a bit sad, for a rainy night",
+  "dark psychological mind games",
+  "epic space adventure with politics",
+];
+
 export default function Discover() {
+  const [mode, setMode] = useState<Mode>("titles");
+  const [vibe, setVibe] = useState("");
   const [liked, setLiked] = useLiked();
   const [feedback, setFeedback] = useFeedback();
   const [queue, setQueue] = useQueue();
@@ -33,19 +43,20 @@ export default function Discover() {
     return { up, down };
   }, [feedback]);
 
+  const canRun = mode === "titles" ? liked.length > 0 : vibe.trim().length >= 3;
+
   async function run(nextFilter = filter) {
-    if (!liked.length) return;
+    if (!canRun) return;
     setLoading(true);
     setError(null);
+    const cats = nextFilter ? [nextFilter] : [];
     try {
-      const likedIds = [...new Set([...liked.map((i) => i.id), ...votes.up])];
-      setRecs(
-        await recommend({
-          liked: likedIds,
-          disliked: votes.down,
-          categories: nextFilter ? [nextFilter] : [],
-        }),
-      );
+      if (mode === "vibe") {
+        setRecs(await recommendVibe({ text: vibe.trim(), disliked: votes.down, categories: cats }));
+      } else {
+        const likedIds = [...new Set([...liked.map((i) => i.id), ...votes.up])];
+        setRecs(await recommend({ liked: likedIds, disliked: votes.down, categories: cats }));
+      }
       setStale(false);
     } catch {
       setError("Could not reach the WIN API. Start it with `docker compose up` and try again.");
@@ -74,17 +85,73 @@ export default function Discover() {
   return (
     <div className="flex flex-col gap-8 pb-8">
       <section className="flex flex-col gap-4 pt-6">
+        <div className="inline-flex self-start rounded-full bg-sunk p-1" role="tablist" aria-label="How to search">
+          {(["titles", "vibe"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => {
+                setMode(m);
+                setRecs(null);
+                setStale(false);
+              }}
+              className={`rounded-full px-4 py-1.5 text-sm ${
+                mode === m ? "bg-surface font-semibold shadow-sm" : "text-muted"
+              }`}
+            >
+              {m === "titles" ? "By titles" : "By vibe"}
+            </button>
+          ))}
+        </div>
         <h1 className="font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-          What did you love?
+          {mode === "titles" ? "What did you love?" : "What are you in the mood for?"}
         </h1>
         <p className="max-w-prose text-muted">
-          Add a few things you enjoyed, from any category. WIN finds what to watch, read or play
-          next, and tells you why.
+          {mode === "titles"
+            ? "Add a few things you enjoyed, from any category. WIN finds what to watch, read or play next, and tells you why."
+            : "Describe a feeling, a setting or a kind of story in your own words. WIN finds things that match it."}
         </p>
-        <ItemSearch items={liked} onChange={setLiked} />
+        {mode === "titles" ? (
+          <ItemSearch items={liked} onChange={setLiked} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="vibe-text" className="sr-only">
+              Describe your mood
+            </label>
+            <textarea
+              id="vibe-text"
+              value={vibe}
+              onChange={(e) => setVibe(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  run();
+                }
+              }}
+              rows={2}
+              maxLength={300}
+              placeholder="e.g. something cozy and a bit sad for a rainy night"
+              className="resize-none rounded-xl border-[1.5px] border-line bg-surface p-3 outline-none placeholder:text-muted focus:border-accent"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {VIBE_EXAMPLES.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => setVibe(ex)}
+                  className="rounded-full border border-dashed border-line px-3 py-1 text-xs text-muted hover:border-fg hover:text-fg"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button
           type="button"
-          disabled={!liked.length || loading}
+          disabled={!canRun || loading}
           onClick={() => run()}
           className="rounded-xl bg-accent py-3 font-display text-lg font-bold text-accent-ink transition-opacity disabled:opacity-40"
         >
@@ -112,7 +179,7 @@ export default function Discover() {
                 </button>
               ))}
             </div>
-            {stale && (
+            {stale && mode === "titles" && (
               <button
                 type="button"
                 onClick={() => run()}

@@ -4,14 +4,18 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app import embed
 from app.config import settings
 from app.db import connect, init_schema
-from app.recommend import recommend
+from app.recommend import recommend, recommend_vibe
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_schema()
+    # Load the embedding model before serving (~12s, mostly importing torch), so no request
+    # has to wait for it. Loading in a background thread made the first request slower.
+    embed.model()
     yield
 
 
@@ -38,6 +42,13 @@ class Recommendation(Item):
 
 class RecommendRequest(BaseModel):
     liked: list[int] = Field(min_length=1, max_length=50)
+    disliked: list[int] = Field(default=[], max_length=200)
+    categories: list[str] = []
+    k: int = Field(default=10, ge=1, le=50)
+
+
+class VibeRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=300)
     disliked: list[int] = Field(default=[], max_length=200)
     categories: list[str] = []
     k: int = Field(default=10, ge=1, le=50)
@@ -71,3 +82,9 @@ def search(q: str = Query(min_length=1, max_length=100), limit: int = Query(8, l
 @app.post("/recommend", response_model=list[Recommendation])
 def recommend_endpoint(req: RecommendRequest):
     return recommend(req.liked, req.disliked, req.categories, req.k)
+
+
+@app.post("/recommend/vibe", response_model=list[Recommendation])
+def recommend_vibe_endpoint(req: VibeRequest):
+    """Recommend from a mood description, e.g. "cozy and a bit sad for a rainy night"."""
+    return recommend_vibe(req.text, req.disliked, req.categories, req.k)

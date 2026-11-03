@@ -76,3 +76,15 @@ def test_balance_relaxes_category_cap_before_anchor_cap():
     picks = balance(ranked, k=10, n_liked=2, mix_categories=True)
     assert [p["anchor"] for p in picks].count(1) == 5
     assert [p["id"] for p in picks] == sorted(p["id"] for p in picks)  # best-first order
+
+
+def test_vibe_reason_skips_generic_and_compound_tags(monkeypatch):
+    import app.embed
+
+    # fake encoder: every tag is equally close, so order = tag order after filtering
+    monkeypatch.setattr(app.embed, "encode", lambda texts: np.ones((len(texts), 2)))
+    item = {"tags": ["fiction", "fiction, science fiction, general", "space opera",
+                     "politics", "space opera", "war"]}
+    from app.recommend import vibe_reason
+
+    assert vibe_reason(item, np.ones(2)) == "Fits your vibe: space opera, politics, war."

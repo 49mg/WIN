@@ -21,6 +21,8 @@ services:
       DATABASE_URL: postgresql://win:win@db:5432/win
     ports:
       - "8000:8000"
+    volumes:
+      - models:/root/.cache/huggingface  # embedding model, downloaded once
     depends_on:
       db:
         condition: service_healthy
@@ -37,3 +39,4 @@ services:
 
 volumes:
   pgdata:
+  models:

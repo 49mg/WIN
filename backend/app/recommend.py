@@ -142,6 +142,61 @@ def explain(item: dict, liked: list[dict]) -> str:
     return f"Similar story and themes to {closest['title']}."
 
 
+# Mood text vs item similarities are low and flat (top-200 range ~0.2-0.5), so a smaller
+# popularity weight than title mode: at 0 literal word matches win ("mind games" ->
+# "The Hating Game"); 0.2 gave the most fitting lists in manual checks.
+VIBE_POP_WEIGHT = 0.2
+VIBE_CANDIDATES = 200
+GENERIC_TAGS = {"fiction", "general", "literature", "novel", "novels", "english fiction",
+                "american fiction", "large type books", "accessible book", "protected daisy"}
+
+
+def vibe_reason(item: dict, query_vec: np.ndarray) -> str:
+    """Name the item's tags that are closest in meaning to the mood the user typed."""
+    from app.embed import encode
+
+    # Open Library subjects can be long compound strings ("fiction, science fiction, general")
+    tags = [t for t in dict.fromkeys(item["tags"])
+            if t not in GENERIC_TAGS and not any(c in t for c in ",/(") and len(t) <= 30][:15]
+    if not tags:
+        return "Fits the mood you described."
+    sims = encode(tags) @ query_vec
+    best = [tags[i] for i in np.argsort(-sims)[:3]]
+    return f"Fits your vibe: {', '.join(best)}."
+
+
+def recommend_vibe(text: str, disliked_ids: list[int] | None = None,
+                   categories: list[str] | None = None, k: int = 10) -> list[dict]:
+    from app.embed import encode
+
+    disliked_ids, categories = disliked_ids or [], categories or []
+    query = encode([text])[0]
+    where = "embedding IS NOT NULL AND NOT (id = ANY(%(exclude)s))"
+    if categories:
+        where += " AND category = ANY(%(categories)s)"
+    with connect() as conn:
+        disliked = _load(conn, disliked_ids)
+        rows = conn.execute(
+            f"""SELECT {", ".join(CANDIDATE_COLS)}, tags FROM items WHERE {where}
+                ORDER BY embedding <=> %(v)s LIMIT {VIBE_CANDIDATES}""",
+            {"v": query, "exclude": disliked_ids, "categories": categories},
+        ).fetchall()
+    items = _rows_to_items(rows, (*CANDIDATE_COLS, "tags"))
+    if not items:
+        return []
+
+    # the mood acts as the single "liked" item
+    score(items, [{"embedding": query}], disliked, VIBE_POP_WEIGHT)
+    items.sort(key=lambda it: it["score"], reverse=True)
+    picks = balance(drop_duplicates(items, []), k, 1, not categories)
+
+    for it in picks:
+        it["reason"] = vibe_reason(it, query)
+        it["match"] = round(100 * max(it["sim"], 0))
+        del it["embedding"], it["anchor"], it["tags"]
+    return picks
+
+
 def recommend(liked_ids: list[int], disliked_ids: list[int] | None = None,
               categories: list[str] | None = None, k: int = 10,
               pop_weight: float | None = None) -> list[dict]:

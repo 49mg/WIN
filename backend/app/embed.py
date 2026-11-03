@@ -7,20 +7,29 @@ Category is left out of the text on purpose, so a book and a movie about the sam
 thing land close together.
 """
 
-from functools import lru_cache
+import threading
 
 import numpy as np
 
 from app.db import connect
 
 MODEL = "all-MiniLM-L6-v2"
+_model = None
+_lock = threading.Lock()
 
 
-@lru_cache(maxsize=1)
 def model():
-    from sentence_transformers import SentenceTransformer
+    """Load once. The lock stops the startup warm-up and a first request loading it twice."""
+    global _model
+    with _lock:
+        if _model is None:
+            from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(MODEL)
+            try:  # cached copy first: skips slow update checks against the Hugging Face Hub
+                _model = SentenceTransformer(MODEL, local_files_only=True)
+            except OSError:
+                _model = SentenceTransformer(MODEL)  # first run: download
+    return _model
 
 
 def encode(texts: list[str]) -> np.ndarray:
