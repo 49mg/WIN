@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Colors from the product mockup. Light first, dark follows the OS setting. */
+:root {
+  --bg: #f3f4f8;
+  --surface: #ffffff;
+  --sunk: #e8eaf2;
+  --fg: #151a2e;
+  --muted: #5b6280;
+  --line: #d6d9e6;
+  --accent: #e2741b;
+  --accent-ink: #ffffff;
+  --ok: #1f8a5b;
+  --movie: #c2410c;
+  --tv: #a16207;
+  --book: #2f3a8f;
+  --game: #1f8a5b;
+  --anime: #b03a74;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1220;
+    --surface: #181c2e;
+    --sunk: #22273d;
+    --fg: #e9ebf5;
+    --muted: #9aa1bf;
+    --line: #2d3350;
+    --accent: #f08a35;
+    --accent-ink: #1a0f05;
+    --ok: #4cc38a;
+    --movie: #f0874d;
+    --tv: #eab308;
+    --book: #9fa9ff;
+    --game: #4cc38a;
+    --anime: #e57aae;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
