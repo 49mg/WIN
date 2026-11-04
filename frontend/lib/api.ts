@@ -16,6 +16,7 @@ export type Recommendation = Item & {
   creators: string[];
   match: number;
   reason: string;
+  ai: boolean; // picked and explained by the LLM re-ranker
 };
 
 export const CATEGORY_LABEL: Record<Category, string> = {
@@ -50,6 +51,7 @@ export function recommendVibe(body: {
   disliked?: number[];
   categories?: Category[];
   k?: number;
+  use_llm?: boolean;
 }) {
   return call<Recommendation[]>("/recommend/vibe", { method: "POST", body: JSON.stringify(body) });
 }
@@ -59,6 +61,7 @@ export function recommend(body: {
   disliked?: number[];
   categories?: Category[];
   k?: number;
+  use_llm?: boolean;
 }) {
   return call<Recommendation[]>("/recommend", { method: "POST", body: JSON.stringify(body) });
 }

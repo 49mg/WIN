@@ -37,9 +37,11 @@ uv run python -m app.ingest igdb --limit 3000          # games, needs IGDB (Twit
 uv run python -m app.embed                             # vectors for new or changed items
 ```
 
+Optional: set `ANTHROPIC_API_KEY` to let Claude Haiku 5.5 re-rank the engine's 30 best candidates and write the reasons. The engine's list shows at once and the AI list replaces it a few seconds later; without the key (or if the API fails) WIN keeps its own picks.
+
 Then open http://localhost:3000.
 
-Tests: `cd backend && uv run pytest`. Model comparison: `uv run python -m app.recsys.compare`.
+Tests: `cd backend && uv run pytest`. Model comparison: `uv run python -m app.recsys.compare` (add `--tmdb` for the run with TMDB descriptions). LLM comparison: `uv run python -m app.recsys.llm_eval --users 100`.
 
 ## Data sources
 

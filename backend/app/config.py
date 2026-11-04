@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     # 84% of the best NDCG@10 with ~2x the catalog coverage of 0.5 (see app/recommend.py).
     pop_weight: float = 0.3
     cors_origins: list[str] = ["http://localhost:3000"]
+    # LLM re-ranking (app/rerank.py); off automatically when no key is set
+    anthropic_api_key: str = ""
+    llm_model: str = "claude-haiku-5-5"
+    llm_rerank: bool = True
 
 
 settings = Settings()

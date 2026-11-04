@@ -27,7 +27,14 @@ export function RecCard({
           </h3>
           <span className="shrink-0 text-xs tabular-nums text-ok">{rec.match}% match</span>
         </div>
-        <CategoryTag item={rec} />
+        <div className="flex items-center gap-2">
+          <CategoryTag item={rec} />
+          {rec.ai && (
+            <span className="text-[11px] text-muted" title="Picked and explained by an AI model">
+              ✦ AI pick
+            </span>
+          )}
+        </div>
         <p className="mt-1 text-sm">{rec.reason}</p>
         {rec.description && (
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{rec.description}</p>

@@ -38,6 +38,7 @@ class Recommendation(Item):
     creators: list[str]
     match: int
     reason: str
+    ai: bool  # True when the LLM picked/ordered this item and wrote the reason
 
 
 class RecommendRequest(BaseModel):
@@ -45,6 +46,7 @@ class RecommendRequest(BaseModel):
     disliked: list[int] = Field(default=[], max_length=200)
     categories: list[str] = []
     k: int = Field(default=10, ge=1, le=50)
+    use_llm: bool = True  # LLM re-ranking; falls back to the engine if off or failing
 
 
 class VibeRequest(BaseModel):
@@ -52,6 +54,7 @@ class VibeRequest(BaseModel):
     disliked: list[int] = Field(default=[], max_length=200)
     categories: list[str] = []
     k: int = Field(default=10, ge=1, le=50)
+    use_llm: bool = True
 
 
 @app.get("/health")
@@ -81,10 +84,10 @@ def search(q: str = Query(min_length=1, max_length=100), limit: int = Query(8, l
 
 @app.post("/recommend", response_model=list[Recommendation])
 def recommend_endpoint(req: RecommendRequest):
-    return recommend(req.liked, req.disliked, req.categories, req.k)
+    return recommend(req.liked, req.disliked, req.categories, req.k, use_llm=req.use_llm)
 
 
 @app.post("/recommend/vibe", response_model=list[Recommendation])
 def recommend_vibe_endpoint(req: VibeRequest):
     """Recommend from a mood description, e.g. "cozy and a bit sad for a rainy night"."""
-    return recommend_vibe(req.text, req.disliked, req.categories, req.k)
+    return recommend_vibe(req.text, req.disliked, req.categories, req.k, req.use_llm)

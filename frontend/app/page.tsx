@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ItemSearch } from "@/components/ItemSearch";
 import { RecCard } from "@/components/RecCard";
 import {
@@ -32,6 +32,8 @@ export default function Discover() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const runId = useRef(0); // ignore answers from an older search
 
   useEffect(() => {
     availableCategories().then(setCategories).catch(() => setCategories([]));
@@ -45,23 +47,45 @@ export default function Discover() {
 
   const canRun = mode === "titles" ? liked.length > 0 : vibe.trim().length >= 3;
 
+  /** Two steps: the engine's picks show at once (~0.2s), then the AI-refined list
+   * replaces them when it arrives (a few seconds). If the AI step fails, the first list stays. */
   async function run(nextFilter = filter) {
     if (!canRun) return;
+    const id = ++runId.current;
     setLoading(true);
+    setRefining(false);
     setError(null);
     const cats = nextFilter ? [nextFilter] : [];
+    const fetchPicks = (use_llm: boolean) =>
+      mode === "vibe"
+        ? recommendVibe({ text: vibe.trim(), disliked: votes.down, categories: cats, use_llm })
+        : recommend({
+            liked: [...new Set([...liked.map((i) => i.id), ...votes.up])],
+            disliked: votes.down,
+            categories: cats,
+            use_llm,
+          });
     try {
-      if (mode === "vibe") {
-        setRecs(await recommendVibe({ text: vibe.trim(), disliked: votes.down, categories: cats }));
-      } else {
-        const likedIds = [...new Set([...liked.map((i) => i.id), ...votes.up])];
-        setRecs(await recommend({ liked: likedIds, disliked: votes.down, categories: cats }));
-      }
+      const fast = await fetchPicks(false);
+      if (id !== runId.current) return;
+      setRecs(fast);
       setStale(false);
     } catch {
-      setError("Could not reach the WIN API. Start it with `docker compose up` and try again.");
+      if (id === runId.current) {
+        setError("Could not reach the WIN API. Start it with `docker compose up` and try again.");
+        setLoading(false);
+      }
+      return;
+    }
+    setLoading(false);
+    setRefining(true);
+    try {
+      const refined = await fetchPicks(true);
+      if (id === runId.current && refined.some((r) => r.ai)) setRecs(refined);
+    } catch {
+      /* keep the engine's picks */
     } finally {
-      setLoading(false);
+      if (id === runId.current) setRefining(false);
     }
   }
 
@@ -179,6 +203,11 @@ export default function Discover() {
                 </button>
               ))}
             </div>
+            {refining && (
+              <span className="text-xs text-muted motion-safe:animate-pulse" role="status">
+                ✦ Refining with AI…
+              </span>
+            )}
             {stale && mode === "titles" && (
               <button
                 type="button"

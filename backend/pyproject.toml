@@ -17,6 +17,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "sentence-transformers>=3.3",
     "torch>=2.5",
+    "anthropic>=2.4.0",
 ]
 
 [dependency-groups]

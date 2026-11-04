@@ -20,10 +20,12 @@ import math
 
 import numpy as np
 
+from app import rerank
 from app.config import settings
 from app.db import connect
 
 PER_LIKED = 80  # candidates fetched around each liked item
+LLM_POOL = 30  # balanced candidates handed to the LLM re-ranker (app/rerank.py)
 DISLIKE_WEIGHT = 0.5
 # Editions and direct sequels of a liked item measured cos >= 0.69 (1984 vs "George Orwell's
 # 1984" 0.83, Dune vs Dune Messiah 0.75); real recommendations were 0.40-0.63.
@@ -47,10 +49,12 @@ def _rows_to_items(rows, cols) -> list[dict]:
 
 def _load(conn, ids):
     rows = conn.execute(
-        "SELECT id, title, category, creators, genres, embedding FROM items WHERE id = ANY(%s)",
+        "SELECT id, title, category, year, description, creators, genres, embedding "
+        "FROM items WHERE id = ANY(%s)",
         (list(ids),),
     ).fetchall()
-    return _rows_to_items(rows, ("id", "title", "category", "creators", "genres", "embedding"))
+    return _rows_to_items(rows, ("id", "title", "category", "year", "description", "creators",
+                                 "genres", "embedding"))
 
 
 def _candidates(conn, liked, exclude, categories) -> list[dict]:
@@ -165,8 +169,34 @@ def vibe_reason(item: dict, query_vec: np.ndarray) -> str:
     return f"Fits your vibe: {', '.join(best)}."
 
 
+def _finish(picks: list[dict]) -> list[dict]:
+    for it in picks:
+        it["match"] = round(100 * max(it["sim"], 0))
+        for key in ("embedding", "anchor", "tags", "score"):
+            it.pop(key, None)
+    return picks
+
+
+def _pick(ranked: list[dict], k: int, n_liked: int, mix: bool, liked: list[dict],
+          vibe: str | None, use_llm: bool, rule_reason) -> list[dict]:
+    """LLM re-rank of a balanced pool of LLM_POOL candidates when available; otherwise (or
+    if the LLM call fails) the engine's own top k with rule-based reasons."""
+    if use_llm and rerank.enabled():
+        pool = balance(ranked, LLM_POOL, n_liked, mix)
+        picked = rerank.rerank(liked, pool, k, vibe)
+        if picked:
+            for it in picked:
+                it["ai"] = True
+            return picked
+    picks = balance(ranked, k, n_liked, mix)
+    for it in picks:
+        it["reason"], it["ai"] = rule_reason(it), False
+    return picks
+
+
 def recommend_vibe(text: str, disliked_ids: list[int] | None = None,
-                   categories: list[str] | None = None, k: int = 10) -> list[dict]:
+                   categories: list[str] | None = None, k: int = 10,
+                   use_llm: bool = True) -> list[dict]:
     from app.embed import encode
 
     disliked_ids, categories = disliked_ids or [], categories or []
@@ -188,18 +218,14 @@ def recommend_vibe(text: str, disliked_ids: list[int] | None = None,
     # the mood acts as the single "liked" item
     score(items, [{"embedding": query}], disliked, VIBE_POP_WEIGHT)
     items.sort(key=lambda it: it["score"], reverse=True)
-    picks = balance(drop_duplicates(items, []), k, 1, not categories)
-
-    for it in picks:
-        it["reason"] = vibe_reason(it, query)
-        it["match"] = round(100 * max(it["sim"], 0))
-        del it["embedding"], it["anchor"], it["tags"]
-    return picks
+    picks = _pick(drop_duplicates(items, []), k, 1, not categories, [], text, use_llm,
+                  lambda it: vibe_reason(it, query))
+    return _finish(picks)
 
 
 def recommend(liked_ids: list[int], disliked_ids: list[int] | None = None,
               categories: list[str] | None = None, k: int = 10,
-              pop_weight: float | None = None) -> list[dict]:
+              pop_weight: float | None = None, use_llm: bool = True) -> list[dict]:
     w = settings.pop_weight if pop_weight is None else pop_weight
     disliked_ids, categories = disliked_ids or [], categories or []
     with connect() as conn:
@@ -213,10 +239,6 @@ def recommend(liked_ids: list[int], disliked_ids: list[int] | None = None,
 
     score(items, liked, disliked, w)
     items.sort(key=lambda it: it["score"], reverse=True)
-    picks = balance(drop_duplicates(items, liked), k, len(liked), not categories)
-
-    for it in picks:
-        it["reason"] = explain(it, liked)
-        it["match"] = round(100 * max(it["sim"], 0))
-        del it["embedding"], it["anchor"]
-    return picks
+    picks = _pick(drop_duplicates(items, liked), k, len(liked), not categories, liked, None,
+                  use_llm, lambda it: explain(it, liked))
+    return _finish(picks)
