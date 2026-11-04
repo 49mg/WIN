@@ -3,7 +3,7 @@
     uv run python -m app.ingest anilist --limit 2000
     uv run python -m app.ingest openlibrary --limit 3000
     uv run python -m app.ingest tmdb --limit 5000      # needs TMDB_API_KEY
-    uv run python -m app.ingest rawg --limit 3000      # needs RAWG_API_KEY
+    uv run python -m app.ingest igdb --limit 3000      # needs IGDB_CLIENT_ID/SECRET (Twitch)
 
 Each source module yields dicts with the keys in FIELDS. Re-running is safe (upsert).
 """

@@ -27,8 +27,33 @@ def download() -> Path:
     return ML_DIR
 
 
-def load() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (ratings, movies). movies has a genres list, user tags and tmdb_id."""
+TMDB_CACHE = DATA_DIR / "processed" / "ml_tmdb.parquet"
+
+
+def tmdb_text(tmdb_ids: list[int]) -> pd.DataFrame:
+    """Overview + keywords from TMDB for each movie (one call per movie, cached on disk)."""
+    if TMDB_CACHE.exists():
+        return pd.read_parquet(TMDB_CACHE)
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.ingest.tmdb import _client, _details
+
+    with _client() as client, ThreadPoolExecutor(8) as pool:
+        details = list(pool.map(lambda i: _details(client, "movie", i), tmdb_ids))
+    rows = [{
+        "tmdb_id": i,
+        "overview": d.get("overview") or "",
+        "keywords": [k["name"].lower() for k in d.get("keywords", {}).get("keywords", [])][:12],
+    } for i, d in zip(tmdb_ids, details, strict=True)]
+    df = pd.DataFrame(rows)
+    TMDB_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(TMDB_CACHE)
+    return df
+
+
+def load(tmdb: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return (ratings, movies). movies has a genres list, user tags and tmdb_id.
+    With tmdb=True it also gets TMDB `overview` and `keywords` (needs TMDB_API_KEY once)."""
     d = download()
     ratings = pd.read_csv(d / "ratings.csv")
     movies = pd.read_csv(d / "movies.csv")
@@ -46,6 +71,15 @@ def load() -> tuple[pd.DataFrame, pd.DataFrame]:
     )
     movies = movies.merge(links[["movieId", "tmdbId"]], on="movieId", how="left")
     movies = movies.rename(columns={"tmdbId": "tmdb_id"})
+    if tmdb:
+        ids = movies["tmdb_id"].dropna().astype(int).unique().tolist()
+        extra = tmdb_text(ids)
+        movies["tmdb_id"] = movies["tmdb_id"].astype("Int64")
+        movies = movies.merge(extra.astype({"tmdb_id": "Int64"}), on="tmdb_id", how="left")
+        movies["overview"] = movies["overview"].fillna("")
+        movies["keywords"] = movies["keywords"].apply(
+            lambda k: list(k) if isinstance(k, (list, tuple)) or hasattr(k, "tolist") else []
+        )
     return ratings, movies
 
 

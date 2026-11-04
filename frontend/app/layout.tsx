@@ -26,12 +26,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </nav>
           </header>
           <main className="flex-1">{children}</main>
-          <footer className="py-8 text-xs leading-relaxed text-muted">
-            Data from <a className="underline" href="https://anilist.co">AniList</a>,{" "}
-            <a className="underline" href="https://openlibrary.org">Open Library</a>,{" "}
-            <a className="underline" href="https://rawg.io">RAWG</a> and{" "}
-            <a className="underline" href="https://www.themoviedb.org">TMDB</a>. This product uses
-            the TMDB API but is not endorsed or certified by TMDB.
+          <footer className="flex flex-col gap-3 py-8 text-xs leading-relaxed text-muted sm:flex-row sm:items-center sm:gap-5">
+            <a href="https://www.themoviedb.org" className="shrink-0" aria-label="The Movie Database (TMDB)">
+              {/* eslint-disable-next-line @next/next/no-img-element -- official TMDB logo, required attribution */}
+              <img src="/tmdb.svg" alt="TMDB logo" className="h-3" />
+            </a>
+            <p>
+              Data from <a className="underline" href="https://anilist.co">AniList</a>,{" "}
+              <a className="underline" href="https://openlibrary.org">Open Library</a>,{" "}
+              <a className="underline" href="https://www.igdb.com">IGDB</a> and{" "}
+              <a className="underline" href="https://www.themoviedb.org">TMDB</a>. This product uses
+              the TMDB API but is not endorsed or certified by TMDB.
+            </p>
           </footer>
         </div>
       </body>

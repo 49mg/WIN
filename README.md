@@ -26,14 +26,14 @@ data/        Downloaded and generated data (gitignored)
 ## Run locally
 
 ```bash
-cp .env.example .env                      # add free TMDB and RAWG keys (optional for anime/books)
+cp .env.example .env                      # add free TMDB and IGDB keys (optional for anime/books)
 docker compose up -d --build              # db :5433, API :8000, app :3000
 
 cd backend && uv sync
 uv run python -m app.ingest anilist --limit 2000       # anime, no key needed
 uv run python -m app.ingest openlibrary --limit 3000   # books, no key needed (~10 min)
 uv run python -m app.ingest tmdb --limit 5000          # movies + TV, needs TMDB_API_KEY
-uv run python -m app.ingest rawg --limit 3000          # games, needs RAWG_API_KEY
+uv run python -m app.ingest igdb --limit 3000          # games, needs IGDB (Twitch) keys
 uv run python -m app.embed                             # vectors for new or changed items
 ```
 
@@ -43,4 +43,4 @@ Tests: `cd backend && uv run pytest`. Model comparison: `uv run python -m app.re
 
 ## Data sources
 
-Anime data from [AniList](https://anilist.co), books from [Open Library](https://openlibrary.org), games from [RAWG](https://rawg.io), movies and TV from [TMDB](https://www.themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB. Model evaluation uses [MovieLens](https://grouplens.org/datasets/movielens/) (GroupLens Research).
+Anime data from [AniList](https://anilist.co), books from [Open Library](https://openlibrary.org), games from [IGDB](https://www.igdb.com), movies and TV from [TMDB](https://www.themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB. Model evaluation uses [MovieLens](https://grouplens.org/datasets/movielens/) (GroupLens Research).

@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE TABLE IF NOT EXISTS items (
     id          BIGSERIAL PRIMARY KEY,
     category    TEXT NOT NULL,          -- movie | tv | book | game | anime
-    source      TEXT NOT NULL,          -- tmdb | rawg | openlibrary | anilist
+    source      TEXT NOT NULL,          -- tmdb | igdb | openlibrary | anilist
     source_id   TEXT NOT NULL,
     title       TEXT NOT NULL,
     year        INT,

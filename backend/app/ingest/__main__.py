@@ -5,7 +5,7 @@ import time
 from app.db import init_schema
 from app.ingest import save
 
-SOURCES = ["anilist", "openlibrary", "tmdb", "rawg"]
+SOURCES = ["anilist", "openlibrary", "tmdb", "igdb"]
 
 parser = argparse.ArgumentParser(description="Import items into the WIN database.")
 parser.add_argument("source", choices=SOURCES)

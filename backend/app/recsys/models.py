@@ -62,13 +62,16 @@ class _ContentModel:
 
 
 def item_text(movies: pd.DataFrame) -> pd.Series:
-    return (
-        movies["title"]
-        + ". Genres: "
-        + movies["genres"].str.join(", ")
-        + ". Tags: "
-        + movies["tags"].str.join(", ")
-    )
+    """Same shape as the app's text (app/embed.py): title, genres, tags, then description.
+    TMDB keywords and overview are used when load(tmdb=True) added them."""
+    tags = movies["tags"]
+    if "keywords" in movies:
+        tags = tags + movies["keywords"]
+    text = movies["title"] + ". Genres: " + movies["genres"].str.join(", ") + ". Tags: " + \
+        tags.str.join(", ")
+    if "overview" in movies:
+        text = text + ". " + movies["overview"].str.slice(0, 1000)
+    return text
 
 
 class TfidfContent(_ContentModel):
@@ -78,7 +81,11 @@ class TfidfContent(_ContentModel):
         tokens = movies["genres"].str.join(" ").str.replace("-", "") + " " + movies[
             "tags"
         ].str.join(" ")
-        return TfidfVectorizer(min_df=2, sublinear_tf=True).fit_transform(tokens)
+        if "overview" not in movies:  # Phase 1 setup, kept as-is so its results reproduce
+            return TfidfVectorizer(min_df=2, sublinear_tf=True).fit_transform(tokens)
+        tokens = tokens + " " + movies["keywords"].str.join(" ") + " " + movies["overview"]
+        vec = TfidfVectorizer(min_df=2, sublinear_tf=True, stop_words="english")
+        return vec.fit_transform(tokens)
 
 
 class EmbeddingContent(_ContentModel):
@@ -87,7 +94,8 @@ class EmbeddingContent(_ContentModel):
         self.name = f"embedding ({model_name})"
 
     def item_vectors(self, movies):
-        cache = DATA_DIR / "processed" / f"ml_emb_{self.model_name.replace('/', '_')}.npy"
+        suffix = "_tmdb" if "overview" in movies else ""
+        cache = DATA_DIR / "processed" / f"ml_emb_{self.model_name.replace('/', '_')}{suffix}.npy"
         if cache.exists():
             emb = np.load(cache)
             if len(emb) == len(movies):

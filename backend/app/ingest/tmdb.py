@@ -66,7 +66,8 @@ def _fetch_kind(client, kind: str, limit: int):
             "year": int(date[:4]) if date[:4].isdigit() else None,
             "description": clean_text(d.get("overview")),
             "creators": creators[:3],
-            "genres": shared_genres(genres + keywords),
+            # official genres only; free-form keywords over-tag ("father daughter" -> family)
+            "genres": shared_genres(genres),
             "tags": [g.lower() for g in genres] + [k.lower() for k in keywords[:12]],
             "image_url": IMG + d["poster_path"] if d.get("poster_path") else None,
             "popularity_raw": d.get("vote_count", 0),
