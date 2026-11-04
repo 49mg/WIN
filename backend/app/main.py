@@ -8,6 +8,7 @@ from app import embed
 from app.config import settings
 from app.db import connect, init_schema
 from app.recommend import recommend, recommend_vibe
+from app.users import router as users_router
 
 
 @asynccontextmanager
@@ -22,6 +23,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="WIN API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"],
                    allow_headers=["*"])
+app.include_router(users_router)
 
 
 class Item(BaseModel):

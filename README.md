@@ -41,7 +41,7 @@ Optional: set `ANTHROPIC_API_KEY` to let Claude Haiku 5.5 re-rank the engine's 3
 
 Then open http://localhost:3000.
 
-Tests: `cd backend && uv run pytest`. Model comparison: `uv run python -m app.recsys.compare` (add `--tmdb` for the run with TMDB descriptions). LLM comparison: `uv run python -m app.recsys.llm_eval --users 100`.
+Tests: `cd backend && uv run pytest` (unit + API tests), and with the stack running, `cd frontend && npm run e2e` (browser tests with Playwright). Model comparison: `uv run python -m app.recsys.compare` (add `--tmdb` for the run with TMDB descriptions). LLM comparison: `uv run python -m app.recsys.llm_eval --users 100`.
 
 ## Data sources
 

@@ -22,9 +22,24 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS items_title_trgm ON items USING gin (title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS items_embedding ON items USING hnsw (embedding vector_cosine_ops);
 
--- user_id is a random id kept in the browser until real accounts exist (WIN-25)
+-- Anonymous accounts: the server hands out a random id, the browser keeps it.
+-- A real login can later attach to the same row.
+CREATE TABLE IF NOT EXISTS users (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- the things a user says they loved (the chips on Discover), in the order they added them
+CREATE TABLE IF NOT EXISTS liked (
+    user_id  UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    item_id  BIGINT NOT NULL REFERENCES items (id) ON DELETE CASCADE,
+    position INT NOT NULL,
+    PRIMARY KEY (user_id, item_id)
+);
+
+-- 👍 / 👎 on recommendations
 CREATE TABLE IF NOT EXISTS feedback (
-    user_id    TEXT NOT NULL,
+    user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     item_id    BIGINT NOT NULL REFERENCES items (id) ON DELETE CASCADE,
     liked      BOOLEAN NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -32,7 +47,7 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 
 CREATE TABLE IF NOT EXISTS queue (
-    user_id  TEXT NOT NULL,
+    user_id  UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     item_id  BIGINT NOT NULL REFERENCES items (id) ON DELETE CASCADE,
     done     BOOLEAN NOT NULL DEFAULT false,
     added_at TIMESTAMPTZ NOT NULL DEFAULT now(),

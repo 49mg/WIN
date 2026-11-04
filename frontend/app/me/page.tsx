@@ -3,12 +3,10 @@
 import Link from "next/link";
 import { CategoryTag, Poster } from "@/components/Poster";
 import { TasteRadar } from "@/components/TasteRadar";
-import { useFeedback, useLiked, useQueue } from "@/lib/store";
+import { useUser } from "@/lib/user";
 
 export default function Me() {
-  const [liked, , loadedLiked] = useLiked();
-  const [feedback] = useFeedback();
-  const [queue, setQueue, loadedQueue] = useQueue();
+  const { liked, feedback, queue, setDone, removeFromQueue, loaded, error } = useUser();
 
   const genres = [
     ...liked.flatMap((i) => i.genres ?? []),
@@ -20,10 +18,10 @@ export default function Me() {
   const done = queue.filter((q) => q.done);
 
   function toggle(id: number) {
-    setQueue((q) => q.map((e) => (e.item.id === id ? { ...e, done: !e.done } : e)));
+    setDone(id, !queue.find((e) => e.item.id === id)?.done);
   }
   function remove(id: number) {
-    setQueue((q) => q.filter((e) => e.item.id !== id));
+    removeFromQueue(id);
   }
 
   return (
@@ -33,12 +31,13 @@ export default function Me() {
         <p className="text-sm text-muted">
           Built from the {liked.length} things you added and the picks you gave 👍.
         </p>
-        {loadedLiked && <TasteRadar genres={genres} />}
+        {error && <p className="text-sm text-[var(--movie)]">{error}</p>}
+        {loaded && <TasteRadar genres={genres} />}
       </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-2xl font-bold">Next queue</h2>
-        {loadedQueue && queue.length === 0 && (
+        {loaded && queue.length === 0 && (
           <p className="text-sm text-muted">
             Nothing queued yet. On{" "}
             <Link href="/" className="text-accent underline">

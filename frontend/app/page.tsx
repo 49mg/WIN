@@ -11,7 +11,7 @@ import {
   type Category,
   type Recommendation,
 } from "@/lib/api";
-import { useFeedback, useLiked, useQueue } from "@/lib/store";
+import { useUser } from "@/lib/user";
 
 type Mode = "titles" | "vibe";
 const VIBE_EXAMPLES = [
@@ -23,9 +23,7 @@ const VIBE_EXAMPLES = [
 export default function Discover() {
   const [mode, setMode] = useState<Mode>("titles");
   const [vibe, setVibe] = useState("");
-  const [liked, setLiked] = useLiked();
-  const [feedback, setFeedback] = useFeedback();
-  const [queue, setQueue] = useQueue();
+  const { liked, setLiked, feedback, vote: saveVote, queue, addToQueue, error: saveError } = useUser();
   const [categories, setCategories] = useState<Category[]>([]);
   const [filter, setFilter] = useState<Category | null>(null);
   const [recs, setRecs] = useState<Recommendation[] | null>(null);
@@ -90,12 +88,7 @@ export default function Discover() {
   }
 
   function vote(rec: Recommendation, up: boolean) {
-    setFeedback((f) => {
-      const next = { ...f };
-      if (next[rec.id]?.liked === up) delete next[rec.id];
-      else next[rec.id] = { liked: up, item: rec };
-      return next;
-    });
+    saveVote(rec, up);
     setStale(true);
   }
 
@@ -181,7 +174,7 @@ export default function Discover() {
         >
           {loading ? "Finding picks…" : "What's next? →"}
         </button>
-        {error && <p className="text-sm text-[var(--movie)]">{error}</p>}
+        {(error || saveError) && <p className="text-sm text-[var(--movie)]">{error || saveError}</p>}
       </section>
 
       {recs && (
@@ -232,7 +225,7 @@ export default function Discover() {
                   feedback={feedback[r.id]?.liked}
                   queued={queuedIds.has(r.id)}
                   onFeedback={(up) => vote(r, up)}
-                  onQueue={() => setQueue((q) => [...q, { item: r, done: false }])}
+                  onQueue={() => addToQueue(r)}
                 />
               ))
             )}

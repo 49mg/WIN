@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
+import { UserProvider } from "@/lib/user";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({ variable: "--font-display", subsets: ["latin"] });
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <Link href="/me" className="hover:text-fg">My taste &amp; queue</Link>
             </nav>
           </header>
-          <main className="flex-1">{children}</main>
+          <main className="flex-1">
+            <UserProvider>{children}</UserProvider>
+          </main>
           <footer className="flex flex-col gap-3 py-8 text-xs leading-relaxed text-muted sm:flex-row sm:items-center sm:gap-5">
             <a href="https://www.themoviedb.org" className="shrink-0" aria-label="The Movie Database (TMDB)">
               {/* eslint-disable-next-line @next/next/no-img-element -- official TMDB logo, required attribution */}
