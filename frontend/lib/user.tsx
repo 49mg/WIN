@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { ApiError, userApi, type Item, type UserData } from "./api";
+import { ApiError, userApi, type Item, type UsageEvent, type UserData } from "./api";
 
 const ID_KEY = "win.userId";
 const OLD_KEYS = ["win.liked", "win.feedback", "win.queue"]; // browser-only storage before WIN-25
@@ -13,6 +13,9 @@ type UserState = {
   loaded: boolean;
   error: string | null;
   userId: string | null;
+  arm: UserData["arm"];
+  /** Online metrics (WIN-37). Fire and forget: a lost event never bothers the user. */
+  logEvents: (events: UsageEvent[]) => void;
   liked: Item[];
   feedback: Feedback;
   queue: QueueEntry[];
@@ -80,6 +83,7 @@ function toState(d: UserData) {
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
+  const [arm, setArm] = useState<UserData["arm"]>("llm");
   const [data, setData] = useState<ReturnType<typeof toState>>({ liked: [], feedback: {}, queue: [] });
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +128,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
         idRef.current = id;
         setUserId(id);
+        setArm(me.arm);
         // keep what the user already changed on screen; those saves run right after this
         if (!changedWhileLoading.current) setData(toState(me));
         ready.current!.resolve(id);
@@ -156,6 +161,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     loaded,
     error,
     userId,
+    arm,
+    logEvents: (events) => {
+      if (!events.length) return;
+      ready.current!.promise.then((id) => userApi.logEvents(id, events)).catch(() => {});
+    },
     ...data,
     setLiked: (items) =>
       save((d) => ({ ...d, liked: items }), (id) => userApi.setLiked(id, items.map((i) => i.id))),

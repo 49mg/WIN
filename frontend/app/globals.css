@@ -1,41 +1,25 @@
 @import "tailwindcss";
 
-/* Colors from the product mockup. Light first, dark follows the OS setting. */
+/* WIN palette: midnight teal. One dark look for everyone so the posters carry the colour;
+   teal is the only action colour; each category has its own colour, used only as small marks. */
 :root {
-  --bg: #f3f4f8;
-  --surface: #ffffff;
-  --sunk: #e8eaf2;
-  --fg: #151a2e;
-  --muted: #5b6280;
-  --line: #d6d9e6;
-  --accent: #e2741b;
-  --accent-ink: #ffffff;
-  --ok: #1f8a5b;
-  --movie: #c2410c;
-  --tv: #a16207;
-  --book: #2f3a8f;
-  --game: #1f8a5b;
-  --anime: #b03a74;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1220;
-    --surface: #181c2e;
-    --sunk: #22273d;
-    --fg: #e9ebf5;
-    --muted: #9aa1bf;
-    --line: #2d3350;
-    --accent: #f08a35;
-    --accent-ink: #1a0f05;
-    --ok: #4cc38a;
-    --movie: #f0874d;
-    --tv: #eab308;
-    --book: #9fa9ff;
-    --game: #4cc38a;
-    --anime: #e57aae;
-    color-scheme: dark;
-  }
+  --bg: #0c1a1e;
+  --surface: #13262b;
+  --sunk: #1b3238;
+  --fg: #e8f4f2;
+  --muted: #8fb1ad;
+  --line: #24403f;
+  --accent: #2dd4bf;
+  --accent-ink: #062521;
+  --accent-soft: #123f3c;
+  --ok: #7ee081;
+  --danger: #ff8a7a;
+  --movie: #ff7a5c;
+  --tv: #f2b43c;
+  --book: #6aa8ff;
+  --game: #b18cff;
+  --anime: #ff7ab3;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -47,12 +31,43 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
   --color-ok: var(--ok);
+  --color-danger: var(--danger);
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
 }
 
+@layer base {
+  /* in the base layer so a component can still turn it off (focus-visible:outline-none) */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  /* faint dot grid so the dark background has some texture */
+  background-image: radial-gradient(rgb(232 244 242 / 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--fg);
+  overflow-x: clip; /* the full-width poster wall must not cause sideways scrolling */
+}
+
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

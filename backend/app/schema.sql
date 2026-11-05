@@ -53,3 +53,25 @@ CREATE TABLE IF NOT EXISTS queue (
     added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, item_id)
 );
+
+-- A/B test (WIN-37): each new user is put in one arm at random.
+-- 'llm' = engine + LLM re-ranking, 'engine' = engine only (holdout).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS arm TEXT NOT NULL DEFAULT 'llm';
+
+-- What users were shown and what they did with it, for online metrics.
+CREATE TABLE IF NOT EXISTS events (
+    id       BIGSERIAL PRIMARY KEY,
+    user_id  UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    ts       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    event    TEXT NOT NULL CHECK (event IN ('impression', 'like', 'dislike', 'queue')),
+    item_id  BIGINT NOT NULL REFERENCES items (id) ON DELETE CASCADE,
+    list_id  UUID NOT NULL,       -- one recommendation list shown to the user
+    mode     TEXT NOT NULL CHECK (mode IN ('titles', 'vibe')),
+    source   TEXT NOT NULL CHECK (source IN ('engine', 'llm')),  -- who picked the item
+    position INT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_user ON events (user_id);
+
+-- Read-only share code (Blend, taste cards). Separate from the user id, which works like a
+-- password: anyone with the id can change the user's data, so it must never be shared.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS share_code TEXT UNIQUE;

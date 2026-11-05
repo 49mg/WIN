@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     llm_model: str = "claude-haiku-5-5"
     llm_rerank: bool = True
+    # A/B test (WIN-37): share of new users who get the engine only, without LLM re-ranking
+    llm_holdout: float = 0.3
 
 
 settings = Settings()

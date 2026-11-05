@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field
 from app import embed
 from app.config import settings
 from app.db import connect, init_schema
+from app.metrics import router as metrics_router
 from app.recommend import recommend, recommend_vibe
+from app.schemas import Item, Recommendation
+from app.share import router as share_router
 from app.users import router as users_router
 
 
@@ -24,23 +27,8 @@ app = FastAPI(title="WIN API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"],
                    allow_headers=["*"])
 app.include_router(users_router)
-
-
-class Item(BaseModel):
-    id: int
-    title: str
-    category: str
-    year: int | None
-    image_url: str | None
-    genres: list[str]
-
-
-class Recommendation(Item):
-    description: str | None
-    creators: list[str]
-    match: int
-    reason: str
-    ai: bool  # True when the LLM picked/ordered this item and wrote the reason
+app.include_router(metrics_router)
+app.include_router(share_router)
 
 
 class RecommendRequest(BaseModel):
@@ -66,6 +54,24 @@ def health() -> dict:
             "SELECT category, count(*), count(embedding) FROM items GROUP BY category"
         ).fetchall()
     return {"status": "ok", "items": {c: {"total": n, "embedded": e} for c, n, e in rows}}
+
+
+@app.get("/popular", response_model=dict[str, list[Item]])
+def popular(per_category: int = Query(12, ge=1, le=40)):
+    """Most popular items with a cover, per category: fills the home page before a search."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT id, title, category, year, image_url, genres FROM (
+                   SELECT *, row_number() OVER (PARTITION BY category ORDER BY popularity DESC) AS r
+                   FROM items WHERE image_url IS NOT NULL AND embedding IS NOT NULL) t
+               WHERE r <= %s ORDER BY category, r""",
+            (per_category,),
+        ).fetchall()
+    out: dict[str, list[Item]] = {}
+    keys = ("id", "title", "category", "year", "image_url", "genres")
+    for r in rows:
+        out.setdefault(r[2], []).append(Item(**dict(zip(keys, r, strict=True))))
+    return out
 
 
 @app.get("/search", response_model=list[Item])

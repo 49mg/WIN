@@ -56,10 +56,11 @@ def shared_genres(raw: list[str]) -> list[str]:
 
 
 def clean_text(s: str | None) -> str | None:
-    """Strip HTML tags and source notes like '(Source: ...)'."""
+    """Strip HTML tags, Markdown bold marks and source notes like '(Source: ...)'."""
     if not s:
         return None
     s = re.sub(r"<[^>]+>", " ", s)
+    s = s.replace("**", "").replace("__", "")
     s = re.sub(r"\((source|written by)[^)]*\)|\[written by[^\]]*\]", " ", s, flags=re.I)
     return re.sub(r"\s+", " ", s).strip() or None
 

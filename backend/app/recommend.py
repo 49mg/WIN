@@ -17,14 +17,18 @@ histories, and 0.068 vs 0.070 (but 2.25x coverage) when users only give their la
 """
 
 import math
+import re
 
 import numpy as np
 
 from app import rerank
 from app.config import settings
 from app.db import connect
+from app.keyword import index as keyword_index
 
-PER_LIKED = 80  # candidates fetched around each liked item
+PER_LIKED = 80  # vector candidates fetched around each liked item
+KEYWORD_CANDIDATES = 200  # keyword (TF-IDF) candidates, fused with the vector ones
+RRF_K = 60  # Reciprocal Rank Fusion constant (the usual value; also used in hybrid_eval)
 LLM_POOL = 30  # balanced candidates handed to the LLM re-ranker (app/rerank.py)
 DISLIKE_WEIGHT = 0.5
 # Editions and direct sequels of a liked item measured cos >= 0.69 (1984 vs "George Orwell's
@@ -57,7 +61,8 @@ def _load(conn, ids):
                                  "genres", "embedding"))
 
 
-def _candidates(conn, liked, exclude, categories) -> list[dict]:
+def _candidates(conn, liked, exclude, categories, keyword_ids: list[int]) -> list[dict]:
+    """Vector neighbours of each liked item (pgvector) plus the keyword matches."""
     where = "embedding IS NOT NULL AND NOT (id = ANY(%(exclude)s))"
     if categories:
         where += " AND category = ANY(%(categories)s)"
@@ -70,7 +75,18 @@ def _candidates(conn, liked, exclude, categories) -> list[dict]:
         ).fetchall()
         for it in _rows_to_items(rows, CANDIDATE_COLS):
             found[it["id"]] = it
+    found.update({it["id"]: it for it in _by_ids(conn, set(keyword_ids) - set(found))})
     return list(found.values())
+
+
+def _by_ids(conn, ids, cols=CANDIDATE_COLS) -> list[dict]:
+    if not ids:
+        return []
+    rows = conn.execute(
+        f"SELECT {', '.join(cols)} FROM items WHERE embedding IS NOT NULL AND id = ANY(%s)",
+        (list(ids),),
+    ).fetchall()
+    return _rows_to_items(rows, cols)
 
 
 def score(items: list[dict], liked: list[dict], disliked: list[dict], w: float) -> None:
@@ -86,15 +102,46 @@ def score(items: list[dict], liked: list[dict], disliked: list[dict], w: float) 
     for it, row, pen in zip(items, sims, penalty, strict=True):
         it["anchor"] = int(row.argmax())
         it["sim"] = float(row.max())
+        it["penalty"] = float(pen)
         it["score"] = it["sim"] - pen + w * it["popularity"]
 
 
+def _ranks(values: np.ndarray) -> np.ndarray:
+    order = np.argsort(-values)
+    r = np.empty(len(values), dtype=int)
+    r[order] = np.arange(len(values))
+    return r
+
+
+def fuse(items: list[dict], keyword_sims: np.ndarray, w: float) -> None:
+    """Hybrid search: Reciprocal Rank Fusion of the vector ranking (it["score"], from score())
+    and the keyword ranking (TF-IDF similarity + w * popularity), over all candidates.
+    On MovieLens this raised recall@30 by 24% over vector search alone (hybrid_eval.py)."""
+    kw = keyword_index.lookup(keyword_sims, [it["id"] for it in items])
+    kw_score = np.where(kw > 0, kw + w * np.array([it["popularity"] for it in items]), -np.inf)
+    r_vec = _ranks(np.array([it["score"] for it in items]))
+    r_kw = _ranks(kw_score)
+    for it, rv, rk, has_kw in zip(items, r_vec, r_kw, np.isfinite(kw_score), strict=True):
+        rrf = 1 / (RRF_K + rv) + (1 / (RRF_K + rk) if has_kw else 0.0)
+        it["score"] = rrf * (1 - it["penalty"])  # keep pushing down items close to a 👎
+
+
+def _title_key(title: str) -> str:
+    """'Dune', 'DUNE' and 'Dune (2021)' -> 'dune'."""
+    t = re.sub(r"\s*\(\d{4}\)\s*$", "", title.lower())
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
 def drop_duplicates(ranked: list[dict], liked: list[dict]) -> list[dict]:
-    """Remove other editions/sequels of liked items, near-copies of better-ranked picks,
-    and keep at most one pick per creator, so the list is about discovery."""
+    """Remove other editions/sequels of liked items, other-media versions with the same title
+    (the Dune movie when you liked the Dune book), near-copies of better-ranked picks, and keep
+    at most one pick per creator, so the list is about discovery."""
     kept, seen_vecs = [], [x["embedding"] for x in liked]
+    liked_titles = {_title_key(x["title"]) for x in liked if x.get("title")}
     used_creators: set[str] = set()  # a liked creator may still appear once ("Also by ...")
     for item in ranked:
+        if _title_key(item["title"]) in liked_titles:
+            continue
         if any(float(np.dot(item["embedding"], v)) > DUPLICATE_SIM for v in seen_vecs):
             continue
         creators = set(item["creators"])
@@ -172,7 +219,7 @@ def vibe_reason(item: dict, query_vec: np.ndarray) -> str:
 def _finish(picks: list[dict]) -> list[dict]:
     for it in picks:
         it["match"] = round(100 * max(it["sim"], 0))
-        for key in ("embedding", "anchor", "tags", "score"):
+        for key in ("embedding", "anchor", "tags", "score", "penalty"):
             it.pop(key, None)
     return picks
 
@@ -180,18 +227,22 @@ def _finish(picks: list[dict]) -> list[dict]:
 def _pick(ranked: list[dict], k: int, n_liked: int, mix: bool, liked: list[dict],
           vibe: str | None, use_llm: bool, rule_reason) -> list[dict]:
     """LLM re-rank of a balanced pool of LLM_POOL candidates when available; otherwise (or
-    if the LLM call fails) the engine's own top k with rule-based reasons."""
+    if the LLM call fails) the engine's own top k with rule-based reasons. If the LLM returns
+    fewer than k picks, the rest is filled from the engine's list."""
+    engine = balance(ranked, k, n_liked, mix)
+    picked = []
     if use_llm and rerank.enabled():
         pool = balance(ranked, LLM_POOL, n_liked, mix)
-        picked = rerank.rerank(liked, pool, k, vibe)
-        if picked:
-            for it in picked:
-                it["ai"] = True
-            return picked
-    picks = balance(ranked, k, n_liked, mix)
-    for it in picks:
-        it["reason"], it["ai"] = rule_reason(it), False
-    return picks
+        picked = rerank.rerank(liked, pool, k, vibe) or []
+        for it in picked:
+            it["ai"] = True
+    chosen = {it["id"] for it in picked}
+    for it in engine:
+        if len(picked) == k:
+            break
+        if it["id"] not in chosen:
+            picked.append({**it, "reason": rule_reason(it), "ai": False})
+    return picked
 
 
 def recommend_vibe(text: str, disliked_ids: list[int] | None = None,
@@ -201,22 +252,28 @@ def recommend_vibe(text: str, disliked_ids: list[int] | None = None,
 
     disliked_ids, categories = disliked_ids or [], categories or []
     query = encode([text])[0]
+    kw_sims = keyword_index.similarity_to_text(text)
+    kw_ids = keyword_index.top(kw_sims, VIBE_POP_WEIGHT, KEYWORD_CANDIDATES, disliked_ids,
+                               categories)
     where = "embedding IS NOT NULL AND NOT (id = ANY(%(exclude)s))"
     if categories:
         where += " AND category = ANY(%(categories)s)"
+    cols = (*CANDIDATE_COLS, "tags")
     with connect() as conn:
         disliked = _load(conn, disliked_ids)
         rows = conn.execute(
-            f"""SELECT {", ".join(CANDIDATE_COLS)}, tags FROM items WHERE {where}
+            f"""SELECT {", ".join(cols)} FROM items WHERE {where}
                 ORDER BY embedding <=> %(v)s LIMIT {VIBE_CANDIDATES}""",
             {"v": query, "exclude": disliked_ids, "categories": categories},
         ).fetchall()
-    items = _rows_to_items(rows, (*CANDIDATE_COLS, "tags"))
+        items = _rows_to_items(rows, cols)
+        items += _by_ids(conn, set(kw_ids) - {it["id"] for it in items}, cols)
     if not items:
         return []
 
     # the mood acts as the single "liked" item
     score(items, [{"embedding": query}], disliked, VIBE_POP_WEIGHT)
+    fuse(items, kw_sims, VIBE_POP_WEIGHT)
     items.sort(key=lambda it: it["score"], reverse=True)
     picks = _pick(drop_duplicates(items, []), k, 1, not categories, [], text, use_llm,
                   lambda it: vibe_reason(it, query))
@@ -233,12 +290,56 @@ def recommend(liked_ids: list[int], disliked_ids: list[int] | None = None,
         if not liked:
             return []
         disliked = _load(conn, disliked_ids)
-        items = _candidates(conn, liked, list(liked_ids) + list(disliked_ids), categories)
+        exclude = list(liked_ids) + list(disliked_ids)
+        kw_sims = keyword_index.similarity_to_items([x["id"] for x in liked])
+        kw_ids = keyword_index.top(kw_sims, w, KEYWORD_CANDIDATES, exclude, categories)
+        items = _candidates(conn, liked, exclude, categories, kw_ids)
     if not items:
         return []
 
     score(items, liked, disliked, w)
+    fuse(items, kw_sims, w)
     items.sort(key=lambda it: it["score"], reverse=True)
     picks = _pick(drop_duplicates(items, liked), k, len(liked), not categories, liked, None,
                   use_llm, lambda it: explain(it, liked))
+    return _finish(picks)
+
+
+def recommend_blend(a_ids: list[int], b_ids: list[int], exclude_ids: list[int] | None = None,
+                    categories: list[str] | None = None, k: int = 10) -> list[dict]:
+    """Blend mode (WIN-35): picks two people will both enjoy.
+
+    Candidates come from both people's loved items (vector + keyword, as in recommend()).
+    An item only scores well if it is close to something *each* person loved:
+    blend score = min(similarity to A's closest item, similarity to B's closest item)
+    + popularity. Rule-based reasons name one item from each side.
+    """
+    w = settings.pop_weight
+    categories = categories or []
+    with connect() as conn:
+        a, b = _load(conn, a_ids), _load(conn, b_ids)
+        if not a or not b:
+            return []
+        both = a + [x for x in b if x["id"] not in {y["id"] for y in a}]
+        exclude = list({*a_ids, *b_ids, *(exclude_ids or [])})
+        kw_sims = keyword_index.similarity_to_items([x["id"] for x in both])
+        kw_ids = keyword_index.top(kw_sims, w, KEYWORD_CANDIDATES, exclude, categories)
+        items = _candidates(conn, both, exclude, categories, kw_ids)
+    if not items:
+        return []
+
+    E = np.stack([it["embedding"] for it in items])
+    sim_a = E @ np.stack([x["embedding"] for x in a]).T
+    sim_b = E @ np.stack([x["embedding"] for x in b]).T
+    for it, ra, rb in zip(items, sim_a, sim_b, strict=True):
+        it["anchor_a"], it["anchor_b"] = int(ra.argmax()), int(rb.argmax())
+        it["sim"] = float(min(ra.max(), rb.max()))
+        it["anchor"] = 0
+        it["score"] = it["sim"] + w * it["popularity"]
+    items.sort(key=lambda it: it["score"], reverse=True)
+    picks = balance(drop_duplicates(items, both), k, 1, not categories)
+    for it in picks:
+        it["reason"] = (f"For you: like {a[it.pop('anchor_a')]['title']}. "
+                        f"For them: like {b[it.pop('anchor_b')]['title']}.")
+        it["ai"] = False
     return _finish(picks)

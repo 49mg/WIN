@@ -5,12 +5,14 @@ header. There is no password, so the id is the only key to the data: treat it li
 private link.
 """
 
-from typing import Annotated
+import random
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.db import connect
 
 router = APIRouter()
@@ -40,6 +42,7 @@ class QueueOut(BaseModel):
 
 class UserData(BaseModel):
     id: UUID
+    arm: str  # A/B test group: "llm" (engine + LLM re-ranking) or "engine" (holdout)
     liked: list[ItemOut]
     feedback: list[FeedbackOut]
     queue: list[QueueOut]
@@ -84,6 +87,7 @@ def _check_items(conn, ids: list[int]) -> None:
 
 def load_user(user: UUID) -> UserData:
     with connect() as conn:
+        arm = conn.execute("SELECT arm FROM users WHERE id = %s", (user,)).fetchone()[0]
         liked = conn.execute(
             f"SELECT {ITEM_COLS} FROM liked l JOIN items i ON i.id = l.item_id "
             "WHERE l.user_id = %s ORDER BY l.position", (user,)).fetchall()
@@ -95,6 +99,7 @@ def load_user(user: UUID) -> UserData:
             "WHERE q.user_id = %s ORDER BY q.added_at", (user,)).fetchall()
     return UserData(
         id=user,
+        arm=arm,
         liked=[_item(r) for r in liked],
         feedback=[FeedbackOut(item=_item(r[:-1]), liked=r[-1]) for r in feedback],
         queue=[QueueOut(item=_item(r[:-1]), done=r[-1]) for r in queue],
@@ -104,7 +109,9 @@ def load_user(user: UUID) -> UserData:
 @router.post("/users", response_model=UserData, status_code=201)
 def create_user():
     with connect() as conn:
-        user = conn.execute("INSERT INTO users DEFAULT VALUES RETURNING id").fetchone()[0]
+        arm = "engine" if random.random() < settings.llm_holdout else "llm"
+        user = conn.execute("INSERT INTO users (arm) VALUES (%s) RETURNING id",
+                            (arm,)).fetchone()[0]
     return load_user(user)
 
 
@@ -174,4 +181,31 @@ def delete_me(user: User):
     """Delete this account and everything saved for it (likes, votes, queue)."""
     with connect() as conn:
         conn.execute("DELETE FROM users WHERE id = %s", (user,))
+    return Response(status_code=204)
+
+
+class EventIn(BaseModel):
+    event: Literal["impression", "like", "dislike", "queue"]
+    item_id: int
+    list_id: UUID
+    mode: Literal["titles", "vibe"]
+    source: Literal["engine", "llm"]
+    position: int = Field(ge=0, le=100)
+
+
+class EventsIn(BaseModel):
+    events: list[EventIn] = Field(max_length=100)
+
+
+@router.post("/me/events", status_code=204)
+def log_events(body: EventsIn, user: User):
+    """What the user was shown and did with it (online metrics, WIN-37)."""
+    if body.events:
+        with connect() as conn:
+            _check_items(conn, list({e.item_id for e in body.events}))
+            conn.cursor().executemany(
+                "INSERT INTO events (user_id, event, item_id, list_id, mode, source, position) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                [(user, e.event, e.item_id, e.list_id, e.mode, e.source, e.position)
+                 for e in body.events])
     return Response(status_code=204)

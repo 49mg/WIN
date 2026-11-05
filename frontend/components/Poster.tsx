@@ -1,16 +1,22 @@
-import type { Item } from "@/lib/api";
+"use client";
 
-/** Cover image, or the title's initials on the category color when there is no image. */
-export function Poster({ item, className = "h-24 w-16" }: { item: Item; className?: string }) {
-  const color = `var(--${item.category})`;
-  if (item.image_url) {
+import { useState } from "react";
+import { CATEGORY_LABEL, type Item } from "@/lib/api";
+
+/** Cover image (2:3), or the title's initials on the category colour when there is none
+ * or the image fails to load (some source links are broken). */
+export function Poster({ item, className = "w-16" }: { item: Item; className?: string }) {
+  const [broken, setBroken] = useState(false);
+  const base = `${className} aspect-[2/3] shrink-0 overflow-hidden rounded-lg bg-sunk`;
+  if (item.image_url && !broken) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- covers come from 4 different CDNs
       <img
         src={item.image_url}
         alt=""
         loading="lazy"
-        className={`${className} shrink-0 rounded-md bg-sunk object-cover`}
+        onError={() => setBroken(true)}
+        className={`${base} object-cover`}
       />
     );
   }
@@ -21,8 +27,8 @@ export function Poster({ item, className = "h-24 w-16" }: { item: Item; classNam
     .join("");
   return (
     <div
-      className={`${className} grid shrink-0 place-items-center rounded-md font-display text-lg font-extrabold text-white`}
-      style={{ background: color }}
+      className={`${base} grid place-items-center font-display text-2xl font-extrabold text-white`}
+      style={{ background: `var(--${item.category})` }}
     >
       {initials}
     </div>
@@ -31,11 +37,9 @@ export function Poster({ item, className = "h-24 w-16" }: { item: Item; classNam
 
 export function CategoryTag({ item }: { item: Item }) {
   return (
-    <span
-      className="text-[11px] font-semibold uppercase tracking-wider"
-      style={{ color: `var(--${item.category})` }}
-    >
-      {item.category === "tv" ? "TV" : item.category}
+    <span data-category={item.category} className="inline-flex items-center gap-1.5 text-xs text-muted">
+      <span className="size-2 rounded-full" style={{ background: `var(--${item.category})` }} />
+      {CATEGORY_LABEL[item.category] ?? item.category}
     </span>
   );
 }

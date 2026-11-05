@@ -1,19 +1,32 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ItemSearch } from "@/components/ItemSearch";
+import { LovedPicker } from "@/components/LovedPicker";
+import { PopularRows } from "@/components/PopularRows";
+import { PosterWall } from "@/components/PosterWall";
 import { RecCard } from "@/components/RecCard";
 import {
   availableCategories,
   CATEGORY_LABEL,
+  getPopular,
   recommend,
   recommendVibe,
+  search,
   type Category,
+  type Item,
   type Recommendation,
+  type UsageEvent,
 } from "@/lib/api";
 import { useUser } from "@/lib/user";
 
 type Mode = "titles" | "vibe";
+// 1 featured pick + 10 posters: two full rows of five on desktop, five rows of two on phones
+const K = 11;
+const STARTERS = [
+  ["Interstellar", "Dune"],
+  ["Death Note", "Breaking Bad"],
+  ["The Witcher 3: Wild Hunt", "Spirited Away"],
+];
 const VIBE_EXAMPLES = [
   "cozy and a bit sad, for a rainy night",
   "dark psychological mind games",
@@ -23,18 +36,50 @@ const VIBE_EXAMPLES = [
 export default function Discover() {
   const [mode, setMode] = useState<Mode>("titles");
   const [vibe, setVibe] = useState("");
-  const { liked, setLiked, feedback, vote: saveVote, queue, addToQueue, error: saveError } = useUser();
+  const {
+    liked, setLiked, feedback, vote: saveVote, queue, addToQueue, error: saveError, arm, logEvents,
+  } = useUser();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [popular, setPopular] = useState<Partial<Record<Category, Item[]>>>({});
   const [filter, setFilter] = useState<Category | null>(null);
   const [recs, setRecs] = useState<Recommendation[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
   const [refining, setRefining] = useState(false);
   const runId = useRef(0); // ignore answers from an older search
+  const recsRef = useRef<Recommendation[] | null>(null);
+  recsRef.current = recs;
+  const pendingVote = useRef<{ position: number; timer?: ReturnType<typeof setTimeout> }>({
+    position: Infinity,
+  });
+  // the list on screen, for online metrics: live-feedback refreshes continue the same list
+  const list = useRef<{ id: string; mode: Mode; shown: Set<number> }>({
+    id: "",
+    mode: "titles",
+    shown: new Set(),
+  });
+
+  const event = (e: UsageEvent["event"], r: Recommendation, position: number): UsageEvent => ({
+    event: e,
+    item_id: r.id,
+    list_id: list.current.id,
+    mode: list.current.mode,
+    source: r.ai ? "llm" : "engine",
+    position,
+  });
+
+  /** Log what the user actually sees once a list is final (each card once per list). */
+  function logShown(cards: Recommendation[]) {
+    const fresh = cards
+      .map((r, i) => [r, i] as const)
+      .filter(([r]) => !list.current.shown.has(r.id));
+    fresh.forEach(([r]) => list.current.shown.add(r.id));
+    logEvents(fresh.map(([r, i]) => event("impression", r, i)));
+  }
 
   useEffect(() => {
     availableCategories().then(setCategories).catch(() => setCategories([]));
+    getPopular(12).then(setPopular).catch(() => setPopular({}));
   }, []);
 
   const votes = useMemo(() => {
@@ -42,32 +87,45 @@ export default function Discover() {
     const down = Object.values(feedback).filter((f) => !f.liked).map((f) => f.item.id);
     return { up, down };
   }, [feedback]);
+  const votesRef = useRef(votes);
+  votesRef.current = votes;
 
   const canRun = mode === "titles" ? liked.length > 0 : vibe.trim().length >= 3;
 
   /** Two steps: the engine's picks show at once (~0.2s), then the AI-refined list
-   * replaces them when it arrives (a few seconds). If the AI step fails, the first list stays. */
-  async function run(nextFilter = filter) {
+   * replaces them when it arrives (a few seconds). If the AI step fails, the first list stays.
+   * `keep`: cards that stay at the top (live feedback refreshes only the cards below a vote). */
+  async function run(nextFilter = filter, keep: Recommendation[] = []) {
     if (!canRun) return;
     const id = ++runId.current;
-    setLoading(true);
+    if (!keep.length) {
+      setLoading(true);
+      list.current = { id: crypto.randomUUID(), mode, shown: new Set() };
+    }
     setRefining(false);
     setError(null);
     const cats = nextFilter ? [nextFilter] : [];
+    const { up, down } = votesRef.current;
     const fetchPicks = (use_llm: boolean) =>
       mode === "vibe"
-        ? recommendVibe({ text: vibe.trim(), disliked: votes.down, categories: cats, use_llm })
+        ? recommendVibe({ text: vibe.trim(), disliked: down, categories: cats, use_llm, k: K })
         : recommend({
-            liked: [...new Set([...liked.map((i) => i.id), ...votes.up])],
-            disliked: votes.down,
+            liked: [...new Set([...liked.map((i) => i.id), ...up])],
+            disliked: down,
             categories: cats,
             use_llm,
+            k: K,
           });
+    const withKept = (fresh: Recommendation[]) => {
+      const keptIds = new Set(keep.map((r) => r.id));
+      return [...keep, ...fresh.filter((r) => !keptIds.has(r.id))].slice(0, K);
+    };
+    let shown: Recommendation[];
     try {
       const fast = await fetchPicks(false);
       if (id !== runId.current) return;
-      setRecs(fast);
-      setStale(false);
+      shown = withKept(fast);
+      setRecs(shown);
     } catch {
       if (id === runId.current) {
         setError("Could not reach the WIN API. Start it with `docker compose up` and try again.");
@@ -76,20 +134,43 @@ export default function Discover() {
       return;
     }
     setLoading(false);
+    if (arm === "engine") {
+      logShown(shown); // A/B holdout: this user never gets the LLM step
+      return;
+    }
     setRefining(true);
     try {
       const refined = await fetchPicks(true);
-      if (id === runId.current && refined.some((r) => r.ai)) setRecs(refined);
+      if (id === runId.current && refined.some((r) => r.ai)) {
+        shown = withKept(refined);
+        setRecs(shown);
+      }
     } catch {
       /* keep the engine's picks */
     } finally {
-      if (id === runId.current) setRefining(false);
+      if (id === runId.current) {
+        setRefining(false);
+        logShown(shown);
+      }
     }
   }
 
-  function vote(rec: Recommendation, up: boolean) {
+  /** Live feedback: 👎 hides the card at once; shortly after the last vote, the cards below
+   * the highest voted card are replaced with picks that use the new votes. */
+  function vote(rec: Recommendation, up: boolean, position: number) {
+    const undo = feedback[rec.id]?.liked === up; // pressing the same vote again removes it
     saveVote(rec, up);
-    setStale(true);
+    if (undo) return;
+    logEvents([event(up ? "like" : "dislike", rec, position)]);
+    if (!up) setRecs((r) => r?.filter((x) => x.id !== rec.id) ?? r);
+    const pending = pendingVote.current;
+    pending.position = Math.min(pending.position, up ? position : position - 1);
+    clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      const keep = (recsRef.current ?? []).slice(0, pending.position + 1);
+      pending.position = Infinity;
+      run(filter, keep);
+    }, 900);
   }
 
   function pickFilter(c: Category | null) {
@@ -99,9 +180,57 @@ export default function Discover() {
 
   const queuedIds = new Set(queue.map((q) => q.item.id));
 
+  /** Empty state: fill the sentence with a ready-made set of titles. */
+  async function applyStarter(titles: string[]) {
+    const found = await Promise.all(
+      titles.map((t) =>
+        search(t)
+          .then((r) => r.find((x) => x.title.toLowerCase() === t.toLowerCase()) ?? r[0])
+          .catch(() => undefined),
+      ),
+    );
+    const items = found.filter((x): x is Item => !!x);
+    if (items.length) setLiked(items);
+  }
+
+  /** Popular rows: add a title to the sentence and bring the sentence into view. */
+  function addFromPopular(item: Item) {
+    if (liked.some((x) => x.id === item.id)) return;
+    setLiked([...liked, item]);
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
+  }
+
+  const nextButton = (
+    <button
+      type="button"
+      disabled={!canRun || loading}
+      onClick={() => run()}
+      className="rounded-full bg-accent px-7 py-3.5 font-display text-lg font-bold text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-35"
+    >
+      {loading ? "Finding picks…" : "What's next?"}
+    </button>
+  );
+
+  const card = (r: Recommendation, i: number, variant: "featured" | "tile") => (
+    <RecCard
+      key={r.id}
+      rec={r}
+      variant={variant}
+      feedback={feedback[r.id]?.liked}
+      queued={queuedIds.has(r.id)}
+      onFeedback={(up) => vote(r, up, i)}
+      onQueue={() => {
+        addToQueue(r);
+        logEvents([event("queue", r, i)]);
+      }}
+    />
+  );
+
   return (
-    <div className="flex flex-col gap-8 pb-8">
-      <section className="flex flex-col gap-4 pt-6">
+    <div className="flex flex-col gap-14 pb-8">
+      <section className="relative isolate flex flex-col gap-8 pt-6 sm:pt-12">
+        <PosterWall items={Object.values(popular).flat()} />
         <div className="inline-flex self-start rounded-full bg-sunk p-1" role="tablist" aria-label="How to search">
           {(["titles", "vibe"] as const).map((m) => (
             <button
@@ -112,28 +241,31 @@ export default function Discover() {
               onClick={() => {
                 setMode(m);
                 setRecs(null);
-                setStale(false);
               }}
-              className={`rounded-full px-4 py-1.5 text-sm ${
-                mode === m ? "bg-surface font-semibold shadow-sm" : "text-muted"
+              className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
+                mode === m ? "bg-surface font-semibold text-fg shadow-sm" : "text-muted hover:text-fg"
               }`}
             >
               {m === "titles" ? "By titles" : "By vibe"}
             </button>
           ))}
         </div>
-        <h1 className="font-display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-          {mode === "titles" ? "What did you love?" : "What are you in the mood for?"}
-        </h1>
-        <p className="max-w-prose text-muted">
-          {mode === "titles"
-            ? "Add a few things you enjoyed, from any category. WIN finds what to watch, read or play next, and tells you why."
-            : "Describe a feeling, a setting or a kind of story in your own words. WIN finds things that match it."}
-        </p>
+
+        <div className="flex max-w-3xl flex-col gap-3">
+          <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
+            {mode === "titles" ? "What did you love?" : "What are you in the mood for?"}
+          </h1>
+          <p className="max-w-[60ch] text-lg text-muted">
+            {mode === "titles"
+              ? "Pick a few movies, shows, games, anime or books you enjoyed. WIN finds what to try next and tells you why."
+              : "Describe a feeling, a setting or a kind of story in your own words."}
+          </p>
+        </div>
+
         {mode === "titles" ? (
-          <ItemSearch items={liked} onChange={setLiked} />
+          <LovedPicker items={liked} onChange={setLiked} action={nextButton} />
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             <label htmlFor="vibe-text" className="sr-only">
               Describe your mood
             </label>
@@ -149,38 +281,58 @@ export default function Discover() {
               }}
               rows={2}
               maxLength={300}
-              placeholder="e.g. something cozy and a bit sad for a rainy night"
-              className="resize-none rounded-xl border-[1.5px] border-line bg-surface p-3 outline-none placeholder:text-muted focus:border-accent"
+              placeholder="something cozy and a bit sad, for a rainy night"
+              className="resize-none rounded-2xl border border-line bg-surface/90 px-5 py-4 text-lg outline-none backdrop-blur placeholder:text-muted focus:border-accent focus-visible:outline-none"
             />
-            <div className="flex flex-wrap gap-1.5">
-              {VIBE_EXAMPLES.map((ex) => (
-                <button
-                  key={ex}
-                  type="button"
-                  onClick={() => setVibe(ex)}
-                  className="rounded-full border border-dashed border-line px-3 py-1 text-xs text-muted hover:border-fg hover:text-fg"
-                >
-                  {ex}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {nextButton}
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                <span>Try</span>
+                {VIBE_EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    onClick={() => setVibe(ex)}
+                    className="rounded-full border border-line px-3 py-1.5 hover:border-fg hover:text-fg"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
-        <button
-          type="button"
-          disabled={!canRun || loading}
-          onClick={() => run()}
-          className="rounded-xl bg-accent py-3 font-display text-lg font-bold text-accent-ink transition-opacity disabled:opacity-40"
-        >
-          {loading ? "Finding picks…" : "What's next? →"}
-        </button>
-        {(error || saveError) && <p className="text-sm text-[var(--movie)]">{error || saveError}</p>}
+
+        {mode === "titles" && liked.length === 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span>Or start with</span>
+            {STARTERS.map((set) => (
+              <button
+                key={set.join("+")}
+                type="button"
+                onClick={() => applyStarter(set)}
+                className="rounded-full border border-line px-3 py-1.5 hover:border-fg hover:text-fg"
+              >
+                {set.join(" + ")}
+              </button>
+            ))}
+          </div>
+        )}
+        {(error || saveError) && <p className="text-sm text-danger">{error || saveError}</p>}
       </section>
 
+      {!recs && mode === "titles" && (
+        <PopularRows popular={popular} likedIds={new Set(liked.map((i) => i.id))} onAdd={addFromPopular} />
+      )}
+
       {recs && (
-        <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter by category">
+        <section className="relative flex flex-col gap-6" aria-label="Your picks">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+            <div
+              className="-mx-4 flex gap-1 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0"
+              role="tablist"
+              aria-label="Filter by category"
+            >
               {[null, ...categories].map((c) => (
                 <button
                   key={c ?? "all"}
@@ -188,48 +340,34 @@ export default function Discover() {
                   role="tab"
                   aria-selected={filter === c}
                   onClick={() => pickFilter(c)}
-                  className={`rounded-full border px-3 py-1 text-xs ${
-                    filter === c ? "border-fg font-semibold" : "border-line text-muted"
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors ${
+                    filter === c ? "bg-fg text-bg" : "text-muted hover:text-fg"
                   }`}
                 >
+                  {c && <span className="size-2 rounded-full" style={{ background: `var(--${c})` }} />}
                   {c ? CATEGORY_LABEL[c] : "All"}
                 </button>
               ))}
             </div>
             {refining && (
-              <span className="text-xs text-muted motion-safe:animate-pulse" role="status">
+              <span className="text-sm text-muted motion-safe:animate-pulse" role="status">
                 ✦ Refining with AI…
               </span>
             )}
-            {stale && mode === "titles" && (
-              <button
-                type="button"
-                onClick={() => run()}
-                className="text-sm font-semibold text-accent underline-offset-4 hover:underline"
-              >
-                ↻ Update picks with your feedback
-              </button>
-            )}
           </div>
 
-          <div className="rounded-2xl border border-line bg-surface px-4">
-            {recs.length === 0 ? (
-              <p className="py-10 text-center text-muted">
-                No picks here yet. Try another category or add more things you loved.
-              </p>
-            ) : (
-              recs.map((r) => (
-                <RecCard
-                  key={r.id}
-                  rec={r}
-                  feedback={feedback[r.id]?.liked}
-                  queued={queuedIds.has(r.id)}
-                  onFeedback={(up) => vote(r, up)}
-                  onQueue={() => addToQueue(r)}
-                />
-              ))
-            )}
-          </div>
+          {recs.length === 0 ? (
+            <p className="py-16 text-center text-muted">
+              No picks here yet. Try another category, or add more things you loved.
+            </p>
+          ) : (
+            <>
+              {card(recs[0], 0, "featured")}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-5 md:grid-cols-5">
+                {recs.slice(1).map((r, i) => card(r, i + 1, "tile"))}
+              </div>
+            </>
+          )}
         </section>
       )}
     </div>

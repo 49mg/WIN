@@ -41,7 +41,18 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
-  if (!res.ok) throw new ApiError(res.status, `WIN API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    // FastAPI errors look like {"detail": "message"}; show that message when there is one
+    const text = await res.text();
+    let detail = text;
+    try {
+      const d = JSON.parse(text).detail;
+      if (typeof d === "string") detail = d;
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(res.status, detail);
+  }
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
@@ -49,6 +60,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type UserData = {
   id: string;
+  arm: "llm" | "engine"; // A/B test group: with or without LLM re-ranking
   liked: Item[];
   feedback: { item: Item; liked: boolean }[];
   queue: { item: Item; done: boolean }[];
@@ -59,7 +71,21 @@ const asUser = (userId: string, init: RequestInit = {}): RequestInit => ({
   headers: { "X-User-Id": userId },
 });
 
+export type UsageEvent = {
+  event: "impression" | "like" | "dislike" | "queue";
+  item_id: number;
+  list_id: string;
+  mode: "titles" | "vibe";
+  source: "engine" | "llm";
+  position: number;
+};
+
 export const userApi = {
+  share: (u: string) => call<{ code: string }>("/me/share", asUser(u, { method: "POST" })),
+  blend: (u: string, code: string, k = 11) =>
+    call<Recommendation[]>("/blend", asUser(u, { method: "POST", body: JSON.stringify({ code, k }) })),
+  logEvents: (u: string, events: UsageEvent[]) =>
+    call<void>("/me/events", asUser(u, { method: "POST", body: JSON.stringify({ events }) })),
   create: () => call<UserData>("/users", { method: "POST" }),
   me: (u: string) => call<UserData>("/me", asUser(u)),
   setLiked: (u: string, itemIds: number[]) =>
@@ -82,8 +108,8 @@ export async function availableCategories(): Promise<Category[]> {
   return (Object.keys(CATEGORY_LABEL) as Category[]).filter((c) => h.items[c]?.total > 0);
 }
 
-export function search(q: string, signal?: AbortSignal) {
-  return call<Item[]>(`/search?q=${encodeURIComponent(q)}`, { signal });
+export function search(q: string, signal?: AbortSignal, limit = 8) {
+  return call<Item[]>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`, { signal });
 }
 
 export function recommendVibe(body: {
@@ -105,3 +131,30 @@ export function recommend(body: {
 }) {
   return call<Recommendation[]>("/recommend", { method: "POST", body: JSON.stringify(body) });
 }
+
+// ---- online metrics (A/B test, WIN-37) ----
+
+export type Rate = { value: number; low: number; high: number };
+export type ArmStats = {
+  arm: "llm" | "engine";
+  mode: "titles" | "vibe";
+  users: number;
+  lists: number;
+  impressions: number;
+  like_rate: Rate;
+  dislike_rate: Rate;
+  queue_rate: Rate;
+  positive_rate: Rate;
+};
+export type Metrics = { users_per_arm: Record<string, number>; results: ArmStats[] };
+
+export const getMetrics = () => call<Metrics>("/metrics");
+
+// ---- share codes (read-only view of what someone loved) ----
+
+export type SharedTaste = { code: string; liked: Item[]; top_genres: [string, number][] };
+export const getShared = (code: string) => call<SharedTaste>(`/share/${encodeURIComponent(code)}`);
+
+/** Most popular items with a cover, per category (home page before a search). */
+export const getPopular = (perCategory = 12) =>
+  call<Partial<Record<Category, Item[]>>>(`/popular?per_category=${perCategory}`);
