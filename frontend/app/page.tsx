@@ -206,7 +206,7 @@ export default function Discover() {
       type="button"
       disabled={!canRun || loading}
       onClick={() => run()}
-      className="rounded-full bg-accent px-7 py-3.5 font-display text-lg font-bold text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-35"
+      className="rounded-lg bg-fg px-7 py-3.5 font-display text-lg font-bold text-bg transition-opacity hover:opacity-90 disabled:opacity-35"
     >
       {loading ? "Finding picks…" : "What's next?"}
     </button>
@@ -231,7 +231,7 @@ export default function Discover() {
     <div className="flex flex-col gap-14 pb-8">
       <section className="relative isolate flex flex-col gap-8 pt-6 sm:pt-12">
         <PosterWall items={Object.values(popular).flat()} />
-        <div className="inline-flex self-start rounded-full bg-sunk p-1" role="tablist" aria-label="How to search">
+        <div className="inline-flex self-start gap-1.5" role="tablist" aria-label="How to search">
           {(["titles", "vibe"] as const).map((m) => (
             <button
               key={m}
@@ -242,8 +242,8 @@ export default function Discover() {
                 setMode(m);
                 setRecs(null);
               }}
-              className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-                mode === m ? "bg-surface font-semibold text-fg shadow-sm" : "text-muted hover:text-fg"
+              className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
+                mode === m ? "border-fg bg-fg font-medium text-bg" : "border-line-strong text-muted hover:text-fg"
               }`}
             >
               {m === "titles" ? "By titles" : "By vibe"}
@@ -282,7 +282,7 @@ export default function Discover() {
               rows={2}
               maxLength={300}
               placeholder="something cozy and a bit sad, for a rainy night"
-              className="resize-none rounded-2xl border border-line bg-surface/90 px-5 py-4 text-lg outline-none backdrop-blur placeholder:text-muted focus:border-accent focus-visible:outline-none"
+              className="resize-none rounded-xl border border-line-strong bg-surface/90 px-5 py-4 text-lg outline-none backdrop-blur placeholder:text-muted focus:border-accent focus-visible:outline-none"
             />
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {nextButton}
@@ -293,7 +293,7 @@ export default function Discover() {
                     key={ex}
                     type="button"
                     onClick={() => setVibe(ex)}
-                    className="rounded-full border border-line px-3 py-1.5 hover:border-fg hover:text-fg"
+                    className="rounded-full border border-line-strong px-3 py-1.5 text-muted hover:text-fg"
                   >
                     {ex}
                   </button>
@@ -311,7 +311,7 @@ export default function Discover() {
                 key={set.join("+")}
                 type="button"
                 onClick={() => applyStarter(set)}
-                className="rounded-full border border-line px-3 py-1.5 hover:border-fg hover:text-fg"
+                className="rounded-full border border-line-strong px-3 py-1.5 text-muted hover:text-fg"
               >
                 {set.join(" + ")}
               </button>
@@ -340,8 +340,8 @@ export default function Discover() {
                   role="tab"
                   aria-selected={filter === c}
                   onClick={() => pickFilter(c)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors ${
-                    filter === c ? "bg-fg text-bg" : "text-muted hover:text-fg"
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    filter === c ? "border-fg bg-fg text-bg" : "border-line-strong text-muted hover:text-fg"
                   }`}
                 >
                   {c && <span className="size-2 rounded-full" style={{ background: `var(--${c})` }} />}

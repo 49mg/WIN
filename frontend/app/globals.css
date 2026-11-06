@@ -1,20 +1,23 @@
 @import "tailwindcss";
 
-/* WIN palette: midnight teal. One dark look for everyone so the posters carry the colour;
-   teal is the only action colour; each category has its own colour, used only as small marks. */
+/* WIN palette: black / white / orange. One dark look for everyone so the posters carry the
+   colour. White is the main action colour; orange is only for highlights (the top pick, its
+   badge, match bars, focus). Category colours are used only as small dots. */
 :root {
-  --bg: #0c1a1e;
-  --surface: #13262b;
-  --sunk: #1b3238;
-  --fg: #e8f4f2;
-  --muted: #8fb1ad;
-  --line: #24403f;
-  --accent: #2dd4bf;
-  --accent-ink: #062521;
-  --accent-soft: #123f3c;
-  --ok: #7ee081;
+  --bg: #0a0a0a;
+  --surface: #171717;
+  --sunk: #1f1f1f;
+  --fg: #fafafa;
+  --muted: #a3a3a3;
+  --line: #262626;
+  --line-strong: #404040;
+  --dim: #525252;
+  --accent: #ff5a1f;
+  --accent-ink: #0a0a0a;
+  --accent-soft: #2a1209;
+  --ok: #ff5a1f;
   --danger: #ff8a7a;
-  --movie: #ff7a5c;
+  --movie: #ef4444;
   --tv: #f2b43c;
   --book: #6aa8ff;
   --game: #b18cff;
@@ -29,6 +32,8 @@
   --color-fg: var(--fg);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-dim: var(--dim);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
@@ -50,7 +55,7 @@
 body {
   background-color: var(--bg);
   /* faint dot grid so the dark background has some texture */
-  background-image: radial-gradient(rgb(232 244 242 / 0.06) 1px, transparent 1px);
+  background-image: radial-gradient(rgb(250 250 250 / 0.05) 1px, transparent 1px);
   background-size: 24px 24px;
   color: var(--fg);
   overflow-x: clip; /* the full-width poster wall must not cause sideways scrolling */

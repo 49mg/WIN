@@ -68,7 +68,7 @@ export default function Me() {
           <button
             type="button"
             onClick={() => shareTaste().catch(() => {})}
-            className="self-start rounded-full border border-line px-4 py-2 text-sm font-medium hover:border-fg"
+            className="self-start rounded-lg border border-line-strong px-4 py-2 text-sm font-medium hover:border-muted"
           >
             Share my taste
           </button>
@@ -76,7 +76,7 @@ export default function Me() {
         {card && (
           <div className="flex flex-col gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- generated on the server */}
-            <img src={card.image} alt="Your taste card" width={600} height={315} className="max-w-full rounded-2xl" />
+            <img src={card.image} alt="Your taste card" width={600} height={315} className="max-w-full rounded-xl" />
             <p className="text-sm text-muted">
               Send this link: the card shows up as its preview, and friends who open it can blend
               their taste with yours.
@@ -86,7 +86,7 @@ export default function Me() {
               readOnly
               value={card.link}
               onFocus={(e) => e.target.select()}
-              className="rounded-full border border-line bg-surface px-4 py-2 text-sm"
+              className="rounded-lg border border-line-strong bg-surface px-4 py-2 text-sm"
             />
           </div>
         )}
@@ -102,7 +102,7 @@ export default function Me() {
           )}
         </div>
         {loaded && queue.length === 0 && (
-          <p className="rounded-2xl bg-surface p-6 text-muted">
+          <p className="rounded-xl border border-line bg-surface p-6 text-muted">
             Nothing saved yet. On{" "}
             <Link href="/" className="text-accent underline underline-offset-2">
               Discover
@@ -114,7 +114,7 @@ export default function Me() {
           {[...todo, ...done].map(({ item, done: isDone }) => (
             <li
               key={item.id}
-              className={`flex items-center gap-4 rounded-2xl bg-surface p-3 pr-4 ${isDone ? "opacity-60" : ""}`}
+              className={`flex items-center gap-4 rounded-xl border border-line bg-surface p-3 pr-4 ${isDone ? "opacity-60" : ""}`}
             >
               <Poster item={item} className="w-12" />
               <label htmlFor={`q-${item.id}`} className="flex min-w-0 flex-1 cursor-pointer flex-col gap-1">

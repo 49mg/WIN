@@ -76,7 +76,7 @@ export function LovedPicker({
 
   return (
     <div className="flex flex-col gap-6">
-      <label className="flex items-center gap-3 rounded-2xl border border-line bg-surface/90 px-5 py-4 backdrop-blur focus-within:border-accent">
+      <label className="flex items-center gap-3 rounded-xl border border-line-strong bg-surface/90 px-5 py-4 backdrop-blur focus-within:border-accent">
         <svg viewBox="0 0 24 24" aria-hidden className="size-6 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
@@ -107,7 +107,7 @@ export function LovedPicker({
       {error && <p className="text-sm text-danger">{error}</p>}
 
       {searching && (
-        <div className="rounded-2xl bg-surface/95 p-4 backdrop-blur">
+        <div className="rounded-xl border border-line bg-surface/95 p-4 backdrop-blur">
           {results.length === 0 ? (
             <p className="text-sm text-muted">Nothing found for “{q.trim()}”. Try the original title or fewer words.</p>
           ) : (
@@ -174,7 +174,7 @@ export function LovedPicker({
               type="button"
               onClick={() => input.current?.focus()}
               aria-label="Add another"
-              className="grid aspect-[2/3] w-20 place-items-center rounded-lg border-2 border-dashed border-line text-2xl text-muted hover:border-accent hover:text-accent sm:w-24"
+              className="grid aspect-[2/3] w-20 place-items-center rounded-lg border-2 border-dashed border-line-strong text-2xl text-muted hover:border-accent hover:text-accent sm:w-24"
             >
               +
             </button>

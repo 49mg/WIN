@@ -55,7 +55,7 @@ export default function BlendHome() {
           type="button"
           disabled={!userId || liked.length === 0}
           onClick={createLink}
-          className="self-start rounded-full bg-accent px-7 py-3.5 font-display text-lg font-bold text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-35"
+          className="self-start rounded-lg bg-fg px-7 py-3.5 font-display text-lg font-bold text-bg transition-opacity hover:opacity-90 disabled:opacity-35"
         >
           Create my blend link
         </button>
@@ -66,9 +66,9 @@ export default function BlendHome() {
             readOnly
             value={link}
             onFocus={(e) => e.target.select()}
-            className="min-w-0 flex-1 rounded-full border border-line bg-surface px-4 py-3 text-sm"
+            className="min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-4 py-3 text-sm"
           />
-          <button type="button" onClick={copy} className="rounded-full bg-fg px-5 py-3 text-sm font-medium text-bg">
+          <button type="button" onClick={copy} className="rounded-lg bg-fg px-5 py-3 text-sm font-medium text-bg hover:opacity-85">
             {copied ? "Copied" : "Copy"}
           </button>
         </div>

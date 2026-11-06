@@ -28,7 +28,7 @@ export default function Stats() {
           <p className="text-sm text-muted">No usage yet. Numbers appear after the first picks.</p>
         )}
         {m && m.results.length > 0 && (
-          <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
+          <div className="overflow-x-auto rounded-xl border border-line bg-surface">
             <table className="w-full text-left text-sm tabular-nums">
               <thead className="text-xs uppercase tracking-wider text-muted">
                 <tr>
@@ -66,7 +66,7 @@ export default function Stats() {
           checked whether the picks matched what they liked next (581 users for search, 100 for the
           AI tests to keep costs low).
         </p>
-        <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <table className="w-full text-left text-sm tabular-nums">
             <thead className="text-xs uppercase tracking-wider text-muted">
               <tr>

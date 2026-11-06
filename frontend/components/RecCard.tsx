@@ -36,22 +36,22 @@ const Icon = {
 
 function Actions({ feedback, queued, onFeedback, onQueue, compact }: Props & { compact: boolean }) {
   const base =
-    "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border text-sm font-medium transition-colors disabled:cursor-default";
+    "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border text-sm font-medium transition-colors disabled:cursor-default";
   const size = compact ? "size-9" : "h-10 px-4";
-  const idle = "border-line text-muted hover:border-fg hover:text-fg";
+  const idle = "border-line-strong text-muted hover:border-muted hover:text-fg"; // ghost buttons
   const buttons = [
     {
       label: "More like this",
       icon: Icon.up,
       pressed: feedback === true,
-      on: "border-ok bg-ok text-bg",
+      on: "border-fg bg-fg text-bg",
       click: () => onFeedback(true),
     },
     {
       label: "Not for me",
       icon: Icon.down,
       pressed: feedback === false,
-      on: "border-fg bg-fg text-bg",
+      on: "border-dim bg-dim text-fg",
       click: () => onFeedback(false),
     },
   ];
@@ -76,7 +76,7 @@ function Actions({ feedback, queued, onFeedback, onQueue, compact }: Props & { c
         disabled={queued}
         aria-label={compact ? (queued ? "In queue" : "Next queue: save for later") : undefined}
         title={compact ? (queued ? "In your queue" : "Save to your Next queue") : undefined}
-        className={`${base} ${size} ${queued ? "border-accent bg-accent-soft text-accent" : idle} ${compact ? "ml-auto" : ""}`}
+        className={`${base} ${size} ${queued ? "border-accent text-accent" : idle} ${compact ? "ml-auto" : ""}`}
         onClick={onQueue}
       >
         {queued ? Icon.saved : Icon.save}
@@ -86,12 +86,30 @@ function Actions({ feedback, queued, onFeedback, onQueue, compact }: Props & { c
   );
 }
 
+/** Match score bar: high = full orange, mid = faded orange, low = grey. */
+function MatchBar({ value, wide }: { value: number; wide: boolean }) {
+  const level = value >= 60 ? "high" : value >= 45 ? "mid" : "low";
+  const fill = { high: "bg-accent", mid: "bg-accent opacity-60", low: "bg-dim" }[level];
+  return (
+    <div
+      className={`flex items-center gap-2 ${wide ? "max-w-60" : ""}`}
+      title={`${value}% match with what you loved`}
+    >
+      <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-line" aria-hidden>
+        <div className={`h-full rounded-[3px] ${fill}`} style={{ width: `${Math.min(100, value)}%` }} />
+      </div>
+      <span className={`min-w-[2.2rem] text-right text-xs tabular-nums ${level === "low" ? "text-muted" : ""}`}>
+        {value}%<span className="sr-only"> match</span>
+      </span>
+    </div>
+  );
+}
+
 function Meta({ rec, full }: { rec: Recommendation; full: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
       <CategoryTag item={rec} />
       {rec.year && <span className="tabular-nums">{rec.year}</span>}
-      {full && <span className="tabular-nums">{rec.match}% match</span>}
       {rec.ai &&
         (full ? (
           <span title="Picked and explained by an AI model">✦ AI pick</span>
@@ -112,14 +130,17 @@ export function RecCard(props: Props) {
 
   if (variant === "featured") {
     return (
-      <article className="grid gap-6 rounded-3xl bg-surface p-5 sm:grid-cols-[minmax(0,14rem)_1fr] sm:p-7">
+      <article className="grid gap-6 rounded-xl border-[1.5px] border-accent bg-surface p-5 sm:grid-cols-[minmax(0,14rem)_1fr] sm:p-7">
         <Poster item={rec} className="w-40 sm:w-full" />
         <div className="flex min-w-0 flex-col gap-4">
-          <p className="text-sm font-medium text-accent">Your next pick</p>
+          <span className="self-start rounded-md bg-accent px-2 py-0.5 text-xs font-medium text-accent-ink">
+            Your next pick
+          </span>
           <h3 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">
             {rec.title}
           </h3>
           <Meta rec={rec} full />
+          <MatchBar value={rec.match} wide />
           <p className="max-w-[60ch] text-lg leading-snug">{rec.reason}</p>
           {rec.description && (
             <p className="line-clamp-3 max-w-[65ch] text-sm leading-relaxed text-muted">
@@ -140,6 +161,7 @@ export function RecCard(props: Props) {
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <h3 className="line-clamp-2 font-display text-lg font-bold leading-tight">{rec.title}</h3>
         <Meta rec={rec} full={false} />
+        <MatchBar value={rec.match} wide={false} />
         <p className="line-clamp-4 text-sm leading-snug text-fg/85">{rec.reason}</p>
       </div>
       <Actions {...props} compact />
