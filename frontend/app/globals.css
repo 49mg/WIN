@@ -22,6 +22,8 @@
   --book: #6aa8ff;
   --game: #b18cff;
   --anime: #ff7ab3;
+  --font-display: "Bricolage Grotesque Variable", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
 }
 

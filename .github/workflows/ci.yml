@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Lint with ruff
+        working-directory: backend
+        run: uvx ruff@0.17.3 check .
+      - name: Every Python file compiles
+        working-directory: backend
+        # syntax check without installing the ML dependencies (torch alone is ~200 MB)
+        run: uv run --no-project --python 3.12 python -m compileall -q app
+
+  frontend:
+    name: Frontend (lint, types, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build

@@ -1,5 +1,7 @@
 # WIN — What Is Next
 
+[![CI](https://github.com/49mg/WIN/actions/workflows/ci.yml/badge.svg)](https://github.com/49mg/WIN/actions/workflows/ci.yml)
+
 **Tell WIN a few things you loved — a movie, a show, a game, an anime, a book — and it tells you what to try next, from any of those categories, with a one-line reason for every pick.**
 
 ![WIN home page: a search bar over a wall of posters, with popular titles below](docs/screenshots/home.jpg)

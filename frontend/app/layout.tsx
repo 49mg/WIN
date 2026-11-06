@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, IBM_Plex_Sans } from "next/font/google";
+// Fonts ship with the app (npm packages), so builds never download from Google Fonts:
+// those downloads failed now and then and broke builds.
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource/ibm-plex-sans/400.css";
+import "@fontsource/ibm-plex-sans/500.css";
+import "@fontsource/ibm-plex-sans/600.css";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { UserProvider } from "@/lib/user";
 import "./globals.css";
-
-const display = Bricolage_Grotesque({ variable: "--font-display", subsets: ["latin"] });
-const body = IBM_Plex_Sans({ variable: "--font-body", subsets: ["latin"], weight: ["400", "500", "600"] });
 
 export const metadata: Metadata = {
   // absolute URLs for link previews (taste cards); set SITE_URL to the real domain when deployed
@@ -18,7 +20,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${display.variable} ${body.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 sm:px-6">
           <header className="flex flex-wrap items-center justify-between gap-3 py-5">
             <Link href="/" className="flex items-baseline gap-2" aria-label="WIN, what is next: home">
