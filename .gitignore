@@ -27,3 +27,8 @@ out/
 .idea/
 .vscode/
 .DS_Store
+
+# test files are kept locally, not committed
+backend/tests/
+frontend/e2e/
+frontend/playwright.config.ts
