@@ -15,6 +15,7 @@ import anthropic
 from pydantic import BaseModel
 
 from app.config import settings
+from app.db import connect
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +105,9 @@ def rerank(liked: list[dict], candidates: list[dict], k: int,
     key = (tuple(x["id"] for x in liked), vibe, tuple(c["id"] for c in candidates), k)
     picks = _cache.get(key)
     if picks is None:
+        if calls_today() >= settings.llm_daily_cap:
+            log.warning("rerank skipped: daily cap of %s LLM calls reached", settings.llm_daily_cap)
+            return None
         try:
             resp = _get_client().messages.parse(
                 model=settings.llm_model,
@@ -117,6 +121,7 @@ def rerank(liked: list[dict], candidates: list[dict], k: int,
         except anthropic.APIError as e:  # timeouts, rate limits, 5xx, bad key: fall back
             _pause(e)
             return None
+        record_usage(resp.usage.input_tokens, resp.usage.output_tokens)  # billed even if unusable
         # "refusal" (safety decline) or "max_tokens" (cut off): use the engine's picks instead
         if resp.stop_reason != "end_turn" or resp.parsed_output is None:
             log.warning("rerank unusable: stop_reason=%s", resp.stop_reason)
@@ -134,3 +139,22 @@ def rerank(liked: list[dict], candidates: list[dict], k: int,
         if len(out) == k:
             break
     return out or None
+
+
+# ---- cost protection: a daily cap on LLM calls, counted in the database ----
+
+def calls_today() -> int:
+    with connect() as conn:
+        row = conn.execute("SELECT calls FROM llm_usage WHERE day = current_date").fetchone()
+    return row[0] if row else 0
+
+
+def record_usage(input_tokens: int, output_tokens: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO llm_usage (day, calls, input_tokens, output_tokens) "
+            "VALUES (current_date, 1, %s, %s) ON CONFLICT (day) DO UPDATE SET "
+            "calls = llm_usage.calls + 1, input_tokens = llm_usage.input_tokens + %s, "
+            "output_tokens = llm_usage.output_tokens + %s",
+            (input_tokens, output_tokens, input_tokens, output_tokens),
+        )

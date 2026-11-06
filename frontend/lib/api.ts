@@ -112,24 +112,29 @@ export function search(q: string, signal?: AbortSignal, limit = 8) {
   return call<Item[]>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`, { signal });
 }
 
-export function recommendVibe(body: {
-  text: string;
-  disliked?: number[];
-  categories?: Category[];
-  k?: number;
-  use_llm?: boolean;
-}) {
-  return call<Recommendation[]>("/recommend/vibe", { method: "POST", body: JSON.stringify(body) });
+// The user id lets the server check the A/B arm: only "llm" users get the paid AI step.
+const userHeader = (userId?: string | null): HeadersInit => (userId ? { "X-User-Id": userId } : {});
+
+export function recommendVibe(
+  body: { text: string; disliked?: number[]; categories?: Category[]; k?: number; use_llm?: boolean },
+  userId?: string | null,
+) {
+  return call<Recommendation[]>("/recommend/vibe", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: userHeader(userId),
+  });
 }
 
-export function recommend(body: {
-  liked: number[];
-  disliked?: number[];
-  categories?: Category[];
-  k?: number;
-  use_llm?: boolean;
-}) {
-  return call<Recommendation[]>("/recommend", { method: "POST", body: JSON.stringify(body) });
+export function recommend(
+  body: { liked: number[]; disliked?: number[]; categories?: Category[]; k?: number; use_llm?: boolean },
+  userId?: string | null,
+) {
+  return call<Recommendation[]>("/recommend", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: userHeader(userId),
+  });
 }
 
 // ---- online metrics (A/B test, WIN-37) ----
@@ -146,7 +151,12 @@ export type ArmStats = {
   queue_rate: Rate;
   positive_rate: Rate;
 };
-export type Metrics = { users_per_arm: Record<string, number>; results: ArmStats[] };
+export type LlmDay = { day: string; calls: number; input_tokens: number; output_tokens: number; cost_usd: number };
+export type Metrics = {
+  users_per_arm: Record<string, number>;
+  results: ArmStats[];
+  llm: { daily_cap: number; calls_today: number; cost_today_usd: number; last_7_days: LlmDay[] };
+};
 
 export const getMetrics = () => call<Metrics>("/metrics");
 

@@ -75,3 +75,11 @@ CREATE INDEX IF NOT EXISTS events_user ON events (user_id);
 -- Read-only share code (Blend, taste cards). Separate from the user id, which works like a
 -- password: anyone with the id can change the user's data, so it must never be shared.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS share_code TEXT UNIQUE;
+
+-- LLM usage per day: enforces the daily call cap and shows calls + cost on /stats.
+CREATE TABLE IF NOT EXISTS llm_usage (
+    day           DATE PRIMARY KEY,
+    calls         INT NOT NULL DEFAULT 0,
+    input_tokens  BIGINT NOT NULL DEFAULT 0,
+    output_tokens BIGINT NOT NULL DEFAULT 0
+);

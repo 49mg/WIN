@@ -6,6 +6,7 @@ import { PopularRows } from "@/components/PopularRows";
 import { PosterWall } from "@/components/PosterWall";
 import { RecCard } from "@/components/RecCard";
 import {
+  ApiError,
   availableCategories,
   CATEGORY_LABEL,
   getPopular,
@@ -37,7 +38,7 @@ export default function Discover() {
   const [mode, setMode] = useState<Mode>("titles");
   const [vibe, setVibe] = useState("");
   const {
-    liked, setLiked, feedback, vote: saveVote, queue, addToQueue, error: saveError, arm, logEvents,
+    liked, setLiked, feedback, vote: saveVote, queue, addToQueue, error: saveError, arm, logEvents, userId,
   } = useUser();
   const [categories, setCategories] = useState<Category[]>([]);
   const [popular, setPopular] = useState<Partial<Record<Category, Item[]>>>({});
@@ -108,14 +109,17 @@ export default function Discover() {
     const { up, down } = votesRef.current;
     const fetchPicks = (use_llm: boolean) =>
       mode === "vibe"
-        ? recommendVibe({ text: vibe.trim(), disliked: down, categories: cats, use_llm, k: K })
-        : recommend({
-            liked: [...new Set([...liked.map((i) => i.id), ...up])],
-            disliked: down,
-            categories: cats,
-            use_llm,
-            k: K,
-          });
+        ? recommendVibe({ text: vibe.trim(), disliked: down, categories: cats, use_llm, k: K }, userId)
+        : recommend(
+            {
+              liked: [...new Set([...liked.map((i) => i.id), ...up])],
+              disliked: down,
+              categories: cats,
+              use_llm,
+              k: K,
+            },
+            userId,
+          );
     const withKept = (fresh: Recommendation[]) => {
       const keptIds = new Set(keep.map((r) => r.id));
       return [...keep, ...fresh.filter((r) => !keptIds.has(r.id))].slice(0, K);
@@ -126,9 +130,13 @@ export default function Discover() {
       if (id !== runId.current) return;
       shown = withKept(fast);
       setRecs(shown);
-    } catch {
+    } catch (e) {
       if (id === runId.current) {
-        setError("Could not reach the WIN API. Start it with `docker compose up` and try again.");
+        setError(
+          e instanceof ApiError && e.status === 429
+            ? e.message // "Too many requests. Try again in N seconds."
+            : "Could not reach the WIN API. Start it with `docker compose up` and try again.",
+        );
         setLoading(false);
       }
       return;

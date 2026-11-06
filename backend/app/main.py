@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from typing import Annotated
+from uuid import UUID
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -8,6 +10,7 @@ from app import embed
 from app.config import settings
 from app.db import connect, init_schema
 from app.metrics import router as metrics_router
+from app.ratelimit import limiter
 from app.recommend import recommend, recommend_vibe
 from app.schemas import Item, Recommendation
 from app.share import router as share_router
@@ -90,12 +93,33 @@ def search(q: str = Query(min_length=1, max_length=100), limit: int = Query(8, l
     return [Item(**dict(zip(keys, r, strict=True))) for r in rows]
 
 
+UserHeader = Annotated[UUID | None, Header(alias="X-User-Id")]
+
+
+def guard(request: Request, user_id: UUID | None, wants_llm: bool) -> bool:
+    """Cost protection for the recommend endpoints. Rate-limits per user (or IP when
+    anonymous) and returns whether the paid LLM step may run: only for a known user in the
+    "llm" arm of the A/B test, so anonymous or engine-arm callers can never trigger it."""
+    key = f"user:{user_id}" if user_id else f"ip:{request.client.host if request.client else '?'}"
+    ok, retry = limiter.allow(key, settings.rate_limit_per_minute)
+    if not ok:
+        raise HTTPException(429, f"Too many requests. Try again in {retry} seconds.",
+                            headers={"Retry-After": str(retry)})
+    if not (wants_llm and user_id):
+        return False
+    with connect() as conn:
+        row = conn.execute("SELECT arm FROM users WHERE id = %s", (user_id,)).fetchone()
+    return bool(row) and row[0] == "llm"
+
+
 @app.post("/recommend", response_model=list[Recommendation])
-def recommend_endpoint(req: RecommendRequest):
-    return recommend(req.liked, req.disliked, req.categories, req.k, use_llm=req.use_llm)
+def recommend_endpoint(req: RecommendRequest, request: Request, user_id: UserHeader = None):
+    llm = guard(request, user_id, req.use_llm)
+    return recommend(req.liked, req.disliked, req.categories, req.k, use_llm=llm)
 
 
 @app.post("/recommend/vibe", response_model=list[Recommendation])
-def recommend_vibe_endpoint(req: VibeRequest):
+def recommend_vibe_endpoint(req: VibeRequest, request: Request, user_id: UserHeader = None):
     """Recommend from a mood description, e.g. "cozy and a bit sad for a rainy night"."""
-    return recommend_vibe(req.text, req.disliked, req.categories, req.k, req.use_llm)
+    llm = guard(request, user_id, req.use_llm)
+    return recommend_vibe(req.text, req.disliked, req.categories, req.k, llm)

@@ -59,6 +59,57 @@ export default function Stats() {
         )}
       </section>
 
+      {m && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-2xl font-bold">AI usage and cost</h2>
+          <p className="max-w-prose text-sm text-muted">
+            Each AI-refined list is one paid call to the language model. After{" "}
+            {m.llm.daily_cap.toLocaleString()} calls a day, WIN uses its own engine until the next day.
+          </p>
+          <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span>
+                Today: <span className="tabular-nums">{m.llm.calls_today.toLocaleString()}</span> of{" "}
+                <span className="tabular-nums">{m.llm.daily_cap.toLocaleString()}</span> calls
+              </span>
+              <span className="tabular-nums text-muted">about ${m.llm.cost_today_usd.toFixed(3)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-[3px] bg-line" aria-hidden>
+              <div
+                className="h-full rounded-[3px] bg-accent"
+                style={{ width: `${Math.min(100, (100 * m.llm.calls_today) / Math.max(1, m.llm.daily_cap))}%` }}
+              />
+            </div>
+          </div>
+          {m.llm.last_7_days.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+              <table className="w-full text-left text-sm tabular-nums">
+                <thead className="text-xs text-muted">
+                  <tr>
+                    {["Day", "Calls", "Tokens in", "Tokens out", "Cost"].map((h) => (
+                      <th key={h} className="px-3 py-2 font-medium">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {m.llm.last_7_days.map((d) => (
+                    <tr key={d.day}>
+                      <td className="px-3 py-2">{d.day}</td>
+                      <td className="px-3 py-2">{d.calls.toLocaleString()}</td>
+                      <td className="px-3 py-2">{d.input_tokens.toLocaleString()}</td>
+                      <td className="px-3 py-2">{d.output_tokens.toLocaleString()}</td>
+                      <td className="px-3 py-2">${d.cost_usd.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-2xl font-bold">Offline results (MovieLens)</h2>
         <p className="max-w-prose text-sm text-muted">
