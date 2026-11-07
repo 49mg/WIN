@@ -110,6 +110,44 @@ export default function Stats() {
         </section>
       )}
 
+      {m && m.latency.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-2xl font-bold">Response times</h2>
+          <p className="max-w-prose text-sm text-muted">
+            How long a list takes on the server, over the last 500 lists of each kind since the API last
+            started. p50 is the typical list; p95 is a slow one (1 in 20 is slower).
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+            <table className="w-full text-left text-sm tabular-nums">
+              <thead className="text-xs text-muted">
+                <tr>
+                  {["List", "Count", "p50", "p95"].map((h) => (
+                    <th key={h} className="px-3 py-2 font-medium">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {m.latency.map((l) => {
+                  const [mode, source] = l.kind.split("/");
+                  return (
+                    <tr key={l.kind}>
+                      <td className="px-3 py-2">
+                        {mode === "vibe" ? "Vibe" : "Titles"} · {source === "ai" ? "AI-refined" : "Engine"}
+                      </td>
+                      <td className="px-3 py-2">{l.count.toLocaleString()}</td>
+                      <td className="px-3 py-2">{(l.p50_ms / 1000).toFixed(2)} s</td>
+                      <td className="px-3 py-2">{(l.p95_ms / 1000).toFixed(2)} s</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-2xl font-bold">Offline results (MovieLens)</h2>
         <p className="max-w-prose text-sm text-muted">

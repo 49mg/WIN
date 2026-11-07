@@ -156,6 +156,7 @@ export type Metrics = {
   users_per_arm: Record<string, number>;
   results: ArmStats[];
   llm: { daily_cap: number; calls_today: number; cost_today_usd: number; last_7_days: LlmDay[] };
+  latency: { kind: string; count: number; p50_ms: number; p95_ms: number }[]; // since the API started
 };
 
 export const getMetrics = () => call<Metrics>("/metrics");

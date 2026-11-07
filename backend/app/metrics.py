@@ -11,6 +11,7 @@ from datetime import date
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app import latency
 from app.config import settings
 from app.db import connect
 
@@ -50,10 +51,18 @@ class LlmUsage(BaseModel):
     last_7_days: list[LlmDay]
 
 
+class Latency(BaseModel):
+    kind: str  # titles/engine, titles/ai, vibe/engine, vibe/ai
+    count: int
+    p50_ms: int
+    p95_ms: int
+
+
 class Metrics(BaseModel):
     users_per_arm: dict[str, int]
     results: list[ArmStats]
     llm: LlmUsage
+    latency: list[Latency]  # since the API last started
 
 
 def wilson(hits: int, n: int, z: float = 1.96) -> Rate:
@@ -103,4 +112,5 @@ def metrics():
                  for arm, mode, users, lists, n, likes, dislikes, queues, pos in rows],
         llm=LlmUsage(daily_cap=settings.llm_daily_cap, calls_today=today.calls if today else 0,
                      cost_today_usd=today.cost_usd if today else 0.0, last_7_days=days),
+        latency=[Latency(**x) for x in latency.summary()],
     )

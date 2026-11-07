@@ -1,3 +1,4 @@
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
@@ -6,7 +7,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app import embed
+from app import embed, latency
 from app.config import settings
 from app.db import connect, init_schema
 from app.metrics import router as metrics_router
@@ -112,14 +113,25 @@ def guard(request: Request, user_id: UUID | None, wants_llm: bool) -> bool:
     return bool(row) and row[0] == "llm"
 
 
+def timed(mode: str, recs: list[dict], start: float) -> None:
+    source = "ai" if any(r.get("ai") for r in recs) else "engine"
+    latency.record(f"{mode}/{source}", (time.perf_counter() - start) * 1000)
+
+
 @app.post("/recommend", response_model=list[Recommendation])
 def recommend_endpoint(req: RecommendRequest, request: Request, user_id: UserHeader = None):
     llm = guard(request, user_id, req.use_llm)
-    return recommend(req.liked, req.disliked, req.categories, req.k, use_llm=llm)
+    start = time.perf_counter()
+    recs = recommend(req.liked, req.disliked, req.categories, req.k, use_llm=llm)
+    timed("titles", recs, start)
+    return recs
 
 
 @app.post("/recommend/vibe", response_model=list[Recommendation])
 def recommend_vibe_endpoint(req: VibeRequest, request: Request, user_id: UserHeader = None):
     """Recommend from a mood description, e.g. "cozy and a bit sad for a rainy night"."""
     llm = guard(request, user_id, req.use_llm)
-    return recommend_vibe(req.text, req.disliked, req.categories, req.k, llm)
+    start = time.perf_counter()
+    recs = recommend_vibe(req.text, req.disliked, req.categories, req.k, llm)
+    timed("vibe", recs, start)
+    return recs

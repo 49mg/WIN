@@ -32,3 +32,4 @@ out/
 backend/tests/
 frontend/e2e/
 frontend/playwright.config.ts
+backups/
