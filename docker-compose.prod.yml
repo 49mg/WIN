@@ -1,0 +1,65 @@
+# Production on a shared server behind nginx (nginx proxies / to 3100 and /api/ to 8100).
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from docker-compose.yml (local development):
+# - ports are bound to 127.0.0.1 only: Docker bypasses ufw, so nothing may listen publicly;
+#   nginx on the host is the only way in
+# - 3100 / 8100 instead of 3000 / 8000 (8000 is used by another app on the server)
+# - the database has no host port at all, and its password comes from .env
+# - the website calls the API on its own domain under /api (nginx strips the prefix)
+# - the API trusts nginx's X-Forwarded-For, so rate limits apply per visitor, not per proxy
+# - containers restart on failure and after a reboot
+
+name: win
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: win
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: win
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U win"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://win:${POSTGRES_PASSWORD}@db:5432/win
+      CORS_ORIGINS: '["https://${WIN_DOMAIN:?set WIN_DOMAIN in .env}"]'
+    # reachable only from this machine (nginx); the port is published on localhost only, so
+    # trusting X-Forwarded-For from any source is safe here
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0",
+              "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    ports:
+      - "127.0.0.1:8100:8000"
+    volumes:
+      - models:/root/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: https://${WIN_DOMAIN}/api
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://backend:8000  # server-side calls (taste card images)
+      SITE_URL: https://${WIN_DOMAIN}        # absolute links in share previews
+    ports:
+      - "127.0.0.1:3100:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  models:
