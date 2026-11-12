@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/49mg/WIN/actions/workflows/ci.yml/badge.svg)](https://github.com/49mg/WIN/actions/workflows/ci.yml)
 
-**Live demo: [win.code-cubes.com](https://win.code-cubes.com)**
+**Live demo: [win.mgdhia.com](https://win.mgdhia.com)**
 
 **Tell WIN a few things you loved — a movie, a show, a game, an anime, a book — and it tells you what to try next, from any of those categories, with a one-line reason for every pick.**
 
